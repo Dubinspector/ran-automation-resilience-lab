@@ -2,7 +2,8 @@ import os
 from copy import deepcopy
 from urllib.request import urlopen
 from urllib.error import URLError
-
+from fastapi.responses import HTMLResponse
+from app.dashboard import DASHBOARD_HTML
 from fastapi import FastAPI, HTTPException
 
 
@@ -61,7 +62,9 @@ environment = {
 
 
 baseline_cells = deepcopy(environment["cells"])
-
+@app.get("/", response_class=HTMLResponse)
+def dashboard():
+    return DASHBOARD_HTML
 
 @app.get("/cells")
 def get_cells():

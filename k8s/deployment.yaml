@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: ran-automation
-          image: ran-automation-lab:v1.2
+          image: ran-automation-lab:v1.3
           imagePullPolicy: IfNotPresent
 
           envFrom:
