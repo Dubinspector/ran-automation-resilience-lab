@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: ran-automation
+  labels:
+    app: ran-automation
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: ran-automation
+
+  template:
+    metadata:
+      labels:
+        app: ran-automation
+
+    spec:
+      containers:
+        - name: ran-automation
+          image: ran-automation-lab:v1.2
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: ran-automation-config
+
+          ports:
+            - containerPort: 8000
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          readinessProbe:
+            httpGet:
+              path: /cells
+              port: 8000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /cells
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
