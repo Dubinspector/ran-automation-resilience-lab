@@ -1,11 +1,14 @@
 apiVersion: v1
 kind: ConfigMap
-
 metadata:
   name: ran-automation-config
 
 data:
   ENVIRONMENT_NAME: "ENV-PRAGUE-01"
+
   PRB_THRESHOLD: "20"
   SINR_THRESHOLD: "5"
+  RSRP_THRESHOLD: "15"
+  USER_THRESHOLD: "40"
+
   RAN_ADAPTER_URL: "http://ran-automation-service:8000"
