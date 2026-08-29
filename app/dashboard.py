@@ -11,7 +11,9 @@ DASHBOARD_HTML = """
     content="width=device-width, initial-scale=1.0"
 >
 
-<title>RAN Automation Resilience Lab</title>
+<title>
+    RAN Automation & Resilience Lab
+</title>
 
 
 <style>
@@ -37,7 +39,7 @@ body {
 }
 
 header {
-    padding: 26px 35px;
+    padding: 24px 32px;
 
     background:
         linear-gradient(
@@ -52,467 +54,718 @@ header {
 
 header h1 {
     margin: 0;
-    font-size: 30px;
+    font-size: 29px;
 }
 
 header p {
-    margin: 8px 0 0 0;
+    margin: 8px 0 0;
+
     color: #94a3b8;
+
+    line-height: 1.5;
 }
 
 .container {
     max-width: 1500px;
     margin: auto;
-    padding: 28px;
+    padding: 26px;
 }
 
 .section {
-    margin-top: 30px;
+    margin-top: 28px;
 }
 
 .section h2 {
-    margin-bottom: 15px;
+    margin:
+        0
+        0
+        8px;
 }
 
-.banner {
-    padding: 22px;
-    border-radius: 10px;
-    margin-bottom: 20px;
+.section-note {
+    margin-bottom: 14px;
 
-    font-size: 25px;
+    color: #94a3b8;
+
+    font-size: 13px;
+
+    line-height: 1.5;
+}
+
+
+/* ===================================================== */
+/* BANNER */
+/* ===================================================== */
+
+.banner {
+    padding: 18px;
+
+    border-radius: 10px;
+
+    margin-bottom: 16px;
+
+    font-size: 21px;
+
     font-weight: bold;
 
     border:
         1px solid #334155;
 }
 
-.banner-stable {
+.banner-good {
     background: #052e16;
     color: #86efac;
 }
 
-.banner-fail {
+.banner-warning {
+    background: #431407;
+    color: #fdba74;
+}
+
+.banner-bad {
     background: #450a0a;
     color: #fca5a5;
 }
 
-.banner-warning {
-    background: #451a03;
-    color: #fdba74;
-}
 
-.banner-blocked {
-    background: #422006;
-    color: #fde68a;
-}
+/* ===================================================== */
+/* SUMMARY */
+/* ===================================================== */
 
-.grid {
+.summary-grid {
     display: grid;
 
     grid-template-columns:
         repeat(
             auto-fit,
-            minmax(200px, 1fr)
-        );
-
-    gap: 15px;
-}
-
-.summary-card {
-    background: #1e293b;
-
-    border:
-        1px solid #334155;
-
-    border-radius: 10px;
-    padding: 18px;
-}
-
-.summary-card .title {
-    color: #94a3b8;
-    font-size: 12px;
-    text-transform: uppercase;
-}
-
-.summary-card .value {
-    margin-top: 8px;
-    font-size: 23px;
-    font-weight: bold;
-}
-
-
-/* ================================================= */
-/* CURRENT DEMO OUTCOME */
-/* ================================================= */
-
-.rollout-main {
-    margin-top: 20px;
-    padding: 22px;
-
-    border:
-        1px solid #334155;
-
-    border-radius: 10px;
-    background: #1e293b;
-}
-
-.rollout-main-success {
-    border-color: #166534;
-    background: #052e16;
-}
-
-.rollout-main-fail {
-    border-color: #7f1d1d;
-    background: #2b1111;
-}
-
-.rollout-main-warning {
-    border-color: #9a3412;
-    background: #431407;
-}
-
-.rollout-main-neutral {
-    border-color: #334155;
-    background: #1e293b;
-}
-
-.rollout-main h2 {
-    margin-top: 0;
-}
-
-.rollout-headline {
-    font-size: 27px;
-    font-weight: bold;
-    margin-bottom: 20px;
-}
-
-.rollout-summary-grid {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(200px, 1fr)
+            minmax(160px, 1fr)
         );
 
     gap: 12px;
 }
 
-.rollout-summary-item {
+.summary-card {
+    padding: 16px;
+
+    background: #1e293b;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 9px;
+}
+
+.summary-label {
+    color: #94a3b8;
+
+    font-size: 11px;
+
+    text-transform: uppercase;
+}
+
+.summary-value {
+    margin-top: 6px;
+
+    font-size: 20px;
+
+    font-weight: bold;
+}
+
+
+/* ===================================================== */
+/* LIVE OPERATIONAL CONTEXT */
+/* ===================================================== */
+
+.context-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(360px, 1fr)
+        );
+
+    gap: 12px;
+}
+
+.context-panel {
+    padding: 16px;
+
+    background: #111827;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 9px;
+}
+
+.context-header {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 10px;
+
+    margin-bottom: 12px;
+}
+
+.context-title {
+    font-size: 16px;
+
+    font-weight: bold;
+}
+
+.context-fields {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(145px, 1fr)
+        );
+
+    gap: 9px;
+}
+
+.context-field {
+    padding: 10px;
+
+    background: #172033;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 6px;
+}
+
+.context-field-label {
+    color: #94a3b8;
+
+    font-size: 10px;
+
+    text-transform: uppercase;
+}
+
+.context-field-value {
+    margin-top: 5px;
+
+    font-size: 15px;
+
+    font-weight: bold;
+
+    overflow-wrap: anywhere;
+}
+
+.context-wide {
+    grid-column: 1 / -1;
+}
+
+
+/* ===================================================== */
+/* INFO / ARCHITECTURE */
+/* ===================================================== */
+
+.info-panel {
+    margin-top: 18px;
+
+    padding: 17px;
+
+    background: #111827;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 9px;
+
+    color: #cbd5e1;
+
+    line-height: 1.6;
+}
+
+.architecture {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            6,
+            1fr
+        );
+
+    gap: 7px;
+
+    margin-top: 14px;
+}
+
+.arch-step {
+    padding: 9px 6px;
+
+    text-align: center;
+
+    background: #172033;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 6px;
+
+    font-size: 12px;
+
+    font-weight: bold;
+}
+
+
+/* ===================================================== */
+/* TOOLBAR */
+/* ===================================================== */
+
+.toolbar {
+    margin-top: 18px;
+
+    padding: 15px;
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 12px;
+
+    align-items: end;
+
+    background: #1e293b;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 9px;
+}
+
+.toolbar-field {
+    min-width: 210px;
+}
+
+.toolbar-field label {
+    display: block;
+
+    margin-bottom: 5px;
+
+    color: #94a3b8;
+
+    font-size: 12px;
+}
+
+.toolbar-field select {
+    width: 100%;
+
+    padding: 9px;
+
+    border:
+        1px solid #475569;
+
+    border-radius: 6px;
+
+    background: #0f172a;
+
+    color: #e2e8f0;
+}
+
+
+/* ===================================================== */
+/* DECISION */
+/* ===================================================== */
+
+.decision-panel {
+    margin-top: 20px;
+
+    padding: 19px;
+
+    border-radius: 10px;
+
+    border:
+        1px solid #334155;
+
+    background: #1e293b;
+}
+
+.decision-pass {
+    background: #052e16;
+    border-color: #166534;
+}
+
+.decision-warning {
+    background: #431407;
+    border-color: #9a3412;
+}
+
+.decision-fail {
+    background: #450a0a;
+    border-color: #7f1d1d;
+}
+
+.decision-headline {
+    font-size: 24px;
+
+    font-weight: bold;
+
+    margin-bottom: 14px;
+}
+
+.decision-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(145px, 1fr)
+        );
+
+    gap: 10px;
+}
+
+.decision-item {
+    min-width: 0;
+
+    padding: 11px;
+
+    overflow: hidden;
+
     background:
         rgba(
             15,
             23,
             42,
-            0.55
+            0.65
         );
-
-    padding: 15px;
-
-    border-radius: 8px;
 
     border:
         1px solid #334155;
+
+    border-radius: 6px;
+
+    font-size: 13px;
 }
 
-.rollout-summary-label {
-    color: #94a3b8;
-    font-size: 12px;
-    text-transform: uppercase;
+.decision-item strong {
+    display: block;
+
+    min-width: 0;
+
+    max-width: 100%;
+
+    margin-top: 4px;
+
+    font-size: 17px;
+
+    line-height: 1.25;
+
+    overflow-wrap: anywhere;
+
+    word-break: normal;
 }
 
-.rollout-summary-value {
-    margin-top: 6px;
-    font-size: 20px;
-    font-weight: bold;
-}
 
+/* ===================================================== */
+/* TABLES */
+/* ===================================================== */
 
-/* ================================================= */
-/* WORKFLOW */
-/* ================================================= */
+.table-panel {
+    overflow-x: auto;
 
-.workflow {
     background: #1e293b;
 
     border:
         1px solid #334155;
 
-    border-radius: 10px;
-    overflow: hidden;
+    border-radius: 9px;
 }
 
-.step {
-    display: grid;
+table {
+    width: 100%;
 
-    grid-template-columns:
-        45px
-        minmax(180px, 1fr)
-        110px
-        120px;
+    border-collapse: collapse;
+}
 
-    gap: 10px;
-
-    align-items: center;
-
-    padding: 12px 18px;
+th,
+td {
+    padding: 10px 9px;
 
     border-bottom:
         1px solid #334155;
+
+    text-align: right;
+
+    font-size: 13px;
+
+    vertical-align: middle;
 }
 
-.step:last-child {
+th {
+    color: #94a3b8;
+
+    background: #172033;
+
+    font-size: 11px;
+
+    text-transform: uppercase;
+}
+
+th:first-child,
+td:first-child {
+    text-align: left;
+}
+
+td.left,
+th.left {
+    text-align: left;
+}
+
+tr:last-child td {
     border-bottom: 0;
 }
 
-.step-number {
-    color: #64748b;
-    font-weight: bold;
-}
+input,
+select {
+    padding: 7px 8px;
 
-.pass-badge,
-.fail-badge,
-.warning-badge {
-    display: inline-block;
+    border:
+        1px solid #475569;
 
     border-radius: 5px;
 
-    padding: 4px 9px;
+    background: #0f172a;
 
-    font-size: 12px;
+    color: #e2e8f0;
+}
+
+input {
+    width: 90px;
+}
+
+.cell-id {
     font-weight: bold;
 }
 
-.pass-badge {
-    color: #86efac;
+.muted {
+    color: #94a3b8;
+}
+
+.pass {
+    color: #4ade80;
+
+    font-weight: bold;
+}
+
+.fail {
+    color: #f87171;
+
+    font-weight: bold;
+}
+
+.warning {
+    color: #fb923c;
+
+    font-weight: bold;
+}
+
+.good-delta {
+    color: #4ade80;
+
+    font-weight: bold;
+}
+
+.bad-delta {
+    color: #f87171;
+
+    font-weight: bold;
+}
+
+
+/* ===================================================== */
+/* BADGES */
+/* ===================================================== */
+
+.badge-pass,
+.badge-fail,
+.badge-warning,
+.badge-info {
+    display: inline-block;
+
+    padding: 4px 7px;
+
+    border-radius: 5px;
+
+    font-size: 11px;
+
+    font-weight: bold;
+}
+
+.badge-pass {
     background: #14532d;
-}
-
-.fail-badge {
-    color: #fca5a5;
-    background: #7f1d1d;
-}
-
-.warning-badge {
-    color: #fdba74;
-    background: #7c2d12;
-}
-
-
-/* ================================================= */
-/* INCIDENT / RECOVERY */
-/* ================================================= */
-
-.incident-panel {
-    margin-top: 16px;
-    padding: 20px;
-
-    background: #2b1111;
-
-    border:
-        1px solid #7f1d1d;
-
-    border-radius: 10px;
-}
-
-.incident-panel h2,
-.incident-panel h3 {
-    color: #fca5a5;
-}
-
-.recovery-strip {
-    margin-top: 16px;
-    padding: 18px;
-
-    background: #052e16;
-
-    border:
-        1px solid #166534;
-
-    border-radius: 10px;
-}
-
-.recovery-strip h3 {
-    margin-top: 0;
     color: #86efac;
 }
 
+.badge-fail {
+    background: #7f1d1d;
+    color: #fca5a5;
+}
 
-/* ================================================= */
-/* CONTROLS */
-/* ================================================= */
+.badge-warning {
+    background: #7c2d12;
+    color: #fdba74;
+}
 
-.control-panel {
+.badge-info {
+    background: #1e3a8a;
+    color: #bfdbfe;
+}
+
+
+/* ===================================================== */
+/* BUTTONS */
+/* ===================================================== */
+
+.controls {
+    margin-top: 16px;
+
+    padding: 16px;
+
     background: #1e293b;
-    padding: 20px;
 
     border:
         1px solid #334155;
 
-    border-radius: 10px;
+    border-radius: 9px;
 }
 
 button {
-    border: 0;
-    border-radius: 7px;
-
-    padding: 12px 17px;
-
     margin:
-        5px 6px
-        5px 0;
+        4px 5px
+        4px 0;
 
-    font-size: 14px;
+    padding: 11px 16px;
+
+    border: 0;
+
+    border-radius: 6px;
+
+    color: white;
+
     font-weight: bold;
 
     cursor: pointer;
-
-    color: white;
-    background: #334155;
 }
 
 button:hover {
     opacity: 0.85;
 }
 
-.btn-good {
-    background: #15803d;
-}
-
-.btn-danger {
-    background: #b91c1c;
-}
-
-.btn-rollout {
+.btn-evaluate {
     background: #2563eb;
 }
 
-.btn-warning {
+.btn-apply {
+    background: #15803d;
+}
+
+.btn-reset {
     background: #c2410c;
 }
 
-.description {
-    margin-top: 12px;
-
-    color: #94a3b8;
-
-    line-height: 1.6;
-    font-size: 14px;
+.btn-refresh {
+    background: #475569;
 }
 
 
-/* ================================================= */
-/* KPI CARDS */
-/* ================================================= */
+/* ===================================================== */
+/* METRIC STRIP */
+/* ===================================================== */
 
-.cells-grid {
+.metric-strip {
     display: grid;
 
     grid-template-columns:
         repeat(
             auto-fit,
-            minmax(380px, 1fr)
+            minmax(150px, 1fr)
         );
 
-    gap: 18px;
+    gap: 10px;
+
+    margin-bottom: 12px;
 }
 
-.cell-card {
-    background: #1e293b;
+.metric-box {
+    padding: 12px;
 
-    border:
-        1px solid #334155;
-
-    border-radius: 10px;
-
-    overflow: hidden;
-}
-
-.cell-header {
-    padding: 17px;
-
-    display: flex;
-
-    justify-content:
-        space-between;
-
-    align-items: center;
-
-    background: #172033;
-}
-
-.cell-header h3 {
-    margin: 0;
-}
-
-.kpi-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.kpi-table th,
-.kpi-table td {
-    padding: 12px 10px;
-
-    text-align: right;
-
-    border-bottom:
-        1px solid #334155;
-}
-
-.kpi-table th:first-child,
-.kpi-table td:first-child {
-    text-align: left;
-}
-
-.kpi-table th {
-    color: #94a3b8;
-    font-size: 12px;
-}
-
-.kpi-pass {
-    color: #4ade80;
-    font-weight: bold;
-}
-
-.kpi-fail {
-    color: #f87171;
-    font-weight: bold;
-}
-
-.delta-good {
-    color: #cbd5e1;
-}
-
-.delta-bad {
-    color: #f87171;
-    font-weight: bold;
-}
-
-
-/* ================================================= */
-/* THRESHOLDS */
-/* ================================================= */
-
-.threshold-box {
     background: #111827;
 
     border:
         1px solid #334155;
 
-    border-radius: 8px;
+    border-radius: 7px;
+}
 
-    padding: 18px;
+.metric-name {
+    color: #94a3b8;
 
-    color: #cbd5e1;
+    font-size: 11px;
 
-    line-height: 1.8;
+    text-transform: uppercase;
+}
+
+.metric-number {
+    margin-top: 5px;
+
+    font-size: 18px;
+
+    font-weight: bold;
 }
 
 
-/* ================================================= */
-/* TIMELINE */
-/* ================================================= */
+/* ===================================================== */
+/* WORKFLOW */
+/* ===================================================== */
+
+.workflow {
+    margin-top: 13px;
+
+    background: #111827;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 7px;
+}
+
+.workflow-row {
+    display: grid;
+
+    grid-template-columns:
+        35px
+        1fr
+        100px;
+
+    gap: 10px;
+
+    padding: 9px 12px;
+
+    border-bottom:
+        1px solid #334155;
+
+    align-items: center;
+
+    font-size: 13px;
+}
+
+.workflow-row:last-child {
+    border-bottom: 0;
+}
+
+
+/* ===================================================== */
+/* EVENTS */
+/* ===================================================== */
 
 .timeline {
     background: #1e293b;
@@ -520,68 +773,88 @@ button:hover {
     border:
         1px solid #334155;
 
-    border-radius: 10px;
+    border-radius: 9px;
 
-    padding: 20px;
+    padding: 14px;
 }
 
-.timeline-event {
+.event {
     display: grid;
 
     grid-template-columns:
-        110px
-        110px
+        90px
+        150px
         90px
         1fr;
 
-    gap: 10px;
+    gap: 9px;
 
-    padding: 10px 0;
+    padding: 8px 0;
 
     border-bottom:
         1px solid #334155;
+
+    font-size: 13px;
 }
 
-.timeline-event:last-child {
+.event:last-child {
     border-bottom: 0;
 }
 
-.timeline-time {
+.event-time {
     color: #94a3b8;
+
     font-family: monospace;
 }
 
-.timeline-type {
+
+/* ===================================================== */
+/* DETAILS / ADVANCED */
+/* ===================================================== */
+
+details {
+    margin-top: 14px;
+
+    background: #111827;
+
+    border:
+        1px solid #334155;
+
+    border-radius: 7px;
+}
+
+summary {
+    padding: 12px 14px;
+
+    cursor: pointer;
+
     font-weight: bold;
 }
 
+.details-body {
+    padding:
+        0
+        14px
+        14px;
+}
 
-/* ================================================= */
-/* RAW */
-/* ================================================= */
+.raw {
+    max-height: 420px;
 
-.raw-output {
+    overflow: auto;
+
+    padding: 14px;
+
     background: #020617;
 
     border:
         1px solid #334155;
 
-    padding: 18px;
-
-    border-radius: 8px;
-
-    max-height: 450px;
-
-    overflow-x: auto;
-
-    font-family: monospace;
+    border-radius: 6px;
 
     color: #cbd5e1;
-}
 
-.small {
-    color: #94a3b8;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .hidden {
@@ -589,37 +862,34 @@ button:hover {
 }
 
 
+/* ===================================================== */
+/* RESPONSIVE */
+/* ===================================================== */
+
 @media (
-    max-width: 750px
+    max-width: 850px
 ) {
 
     .container {
-        padding: 15px;
+        padding: 14px;
     }
 
-    .cells-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .step {
+    .architecture {
         grid-template-columns:
-            35px
-            1fr
-            80px;
+            repeat(
+                2,
+                1fr
+            );
     }
 
-    .step-detail {
-        display: none;
-    }
-
-    .timeline-event {
+    .event {
         grid-template-columns:
-            90px
             80px
             1fr;
     }
 
-    .timeline-status {
+    .event-status,
+    .event-message {
         display: none;
     }
 }
@@ -635,14 +905,15 @@ button:hover {
 <header>
 
 <h1>
-    RAN Automation Delivery & Resilience Lab
+    RAN Automation & Resilience Lab
 </h1>
 
 <p>
-    Synthetic RAN validation,
-    guarded rollout,
-    failure detection
-    and automatic application-level rollback
+    Operator overview:
+    observe the active RAN and environmental context,
+    configure a synthetic candidate,
+    evaluate RF and traffic impact,
+    then promote, roll back, or block according to network guardrails.
 </p>
 
 </header>
@@ -651,29 +922,25 @@ button:hover {
 <div class="container">
 
 
-<!-- ================================================= -->
-<!-- SYSTEM STATUS -->
-<!-- ================================================= -->
-
 <div
     id="system-banner"
-    class="banner banner-stable"
+    class="banner banner-good"
 >
-    Loading system state...
+    Loading...
 </div>
 
 
-<div class="grid">
+<div class="summary-grid">
 
     <div class="summary-card">
 
-        <div class="title">
-            Environment
+        <div class="summary-label">
+            Application
         </div>
 
         <div
-            id="environment"
-            class="value"
+            id="application-release"
+            class="summary-value"
         >
             -
         </div>
@@ -683,13 +950,13 @@ button:hover {
 
     <div class="summary-card">
 
-        <div class="title">
-            Application Health
+        <div class="summary-label">
+            Active Config
         </div>
 
         <div
-            id="application-health"
-            class="value"
+            id="ran-version"
+            class="summary-value"
         >
             -
         </div>
@@ -699,29 +966,13 @@ button:hover {
 
     <div class="summary-card">
 
-        <div class="title">
-            Active Release
-        </div>
-
-        <div
-            id="active-release"
-            class="value"
-        >
-            -
-        </div>
-
-    </div>
-
-
-    <div class="summary-card">
-
-        <div class="title">
-            Rollout State
+        <div class="summary-label">
+            Automation State
         </div>
 
         <div
             id="rollout-state"
-            class="value"
+            class="summary-value"
         >
             -
         </div>
@@ -731,13 +982,13 @@ button:hover {
 
     <div class="summary-card">
 
-        <div class="title">
-            RAN Validation
+        <div class="summary-label">
+            Active RAN Health
         </div>
 
         <div
             id="ran-validation"
-            class="value"
+            class="summary-value"
         >
             -
         </div>
@@ -747,13 +998,29 @@ button:hover {
 
     <div class="summary-card">
 
-        <div class="title">
-            Safety Score
+        <div class="summary-label">
+            Served UE
         </div>
 
         <div
-            id="safety-score"
-            class="value"
+            id="served-ratio"
+            class="summary-value"
+        >
+            -
+        </div>
+
+    </div>
+
+
+    <div class="summary-card">
+
+        <div class="summary-label">
+            Configured / Serving
+        </div>
+
+        <div
+            id="cell-counts"
+            class="summary-value"
         >
             -
         </div>
@@ -763,296 +1030,602 @@ button:hover {
 </div>
 
 
-<!-- ================================================= -->
-<!-- CURRENT DEMO OUTCOME -->
-<!-- ================================================= -->
-
-<div
-    id="rollout-result-section"
-    class="rollout-main rollout-main-neutral"
->
+<div class="section">
 
 <h2>
-    Current Demo Outcome
+    Live Operational Context
 </h2>
 
+<div class="section-note">
+    Weather is read from the backend-authoritative snapshot used
+    to re-observe the active RAN. The browser does not fetch
+    Open-Meteo directly. The backend weather cache TTL is 10 minutes.
+</div>
+
+<div class="context-grid">
+
+    <div
+        id="weather-context-panel"
+        class="context-panel"
+    >
+
+        <div class="context-header">
+
+            <div class="context-title">
+                Environmental Snapshot
+            </div>
+
+            <div id="weather-source-status">
+                -
+            </div>
+
+        </div>
+
+        <div class="context-fields">
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Temperature
+                </div>
+                <div
+                    id="weather-temperature"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Rain Rate
+                </div>
+                <div
+                    id="weather-rain"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Humidity
+                </div>
+                <div
+                    id="weather-humidity"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Surface Pressure
+                </div>
+                <div
+                    id="weather-pressure"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Wind
+                </div>
+                <div
+                    id="weather-wind"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Cache Age
+                </div>
+                <div
+                    id="weather-cache-age"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field context-wide">
+                <div class="context-field-label">
+                    Weather Valid At / Location
+                </div>
+                <div
+                    id="weather-valid-at"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div
+                id="weather-error-field"
+                class="context-field context-wide hidden"
+            >
+                <div class="context-field-label">
+                    Weather Feed Note
+                </div>
+                <div
+                    id="weather-error"
+                    class="context-field-value warning"
+                >
+                    -
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="baseline-context-panel"
+        class="context-panel"
+    >
+
+        <div class="context-header">
+
+            <div class="context-title">
+                Active RAN Baseline
+            </div>
+
+            <div id="baseline-health-badge">
+                -
+            </div>
+
+        </div>
+
+        <div class="context-fields">
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Active Config
+                </div>
+                <div
+                    id="baseline-active-config"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Requested Active UE
+                </div>
+                <div
+                    id="baseline-requested-ues"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Served Active UE
+                </div>
+                <div
+                    id="baseline-served-ues"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Served Ratio
+                </div>
+                <div
+                    id="baseline-served-ratio"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field">
+                <div class="context-field-label">
+                    Failed Safety Checks
+                </div>
+                <div
+                    id="baseline-failed-count"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+            <div class="context-field context-wide">
+                <div class="context-field-label">
+                    Active Safety Finding
+                </div>
+                <div
+                    id="baseline-failure"
+                    class="context-field-value"
+                >
+                    -
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+</div>
+
+
+<div class="info-panel">
+
+<b>
+    Automation decision path
+</b>
+
+<div class="architecture">
+
+    <div class="arch-step">
+        CHANGE
+    </div>
+
+    <div class="arch-step">
+        RF
+    </div>
+
+    <div class="arch-step">
+        UE ASSOCIATION
+    </div>
+
+    <div class="arch-step">
+        TRAFFIC / PRB
+    </div>
+
+    <div class="arch-step">
+        GUARDRAILS
+    </div>
+
+    <div class="arch-step">
+        PROMOTE / ROLLBACK / BLOCK
+    </div>
+
+</div>
 
 <div
-    id="rollout-headline"
-    class="rollout-headline"
+    class="muted"
+    style="margin-top:12px"
 >
-    READY — HEALTHY BASELINE
+
+The sites and operational thresholds are synthetic
+learning-lab data.
+
+The RF layer is geography-aware and physics-inspired,
+but this dashboard does not claim real T-Mobile BTS
+locations or production policy.
+
+</div>
+
+</div>
+
+
+<div class="toolbar">
+
+    <div class="toolbar-field">
+
+        <label>
+            Working site
+        </label>
+
+        <select
+            id="site-filter"
+            onchange="renderWorkingView()"
+        >
+        </select>
+
+    </div>
+
+
+    <div class="toolbar-field">
+
+        <label>
+            Carrier band
+        </label>
+
+        <select
+            id="band-filter"
+            onchange="renderWorkingView()"
+        >
+
+            <option value="ALL">
+                All bands
+            </option>
+
+            <option value="n78">
+                n78
+            </option>
+
+            <option value="n28">
+                n28
+            </option>
+
+            <option value="B3">
+                B3
+            </option>
+
+        </select>
+
+    </div>
+
 </div>
 
 
 <div
-    id="rollout-summary"
-    class="rollout-summary-grid"
+    id="decision-panel"
+    class="decision-panel"
 >
 
-    <div class="rollout-summary-item">
+<div
+    id="decision-headline"
+    class="decision-headline"
+>
+    READY FOR CHANGE
+</div>
 
-        <div class="rollout-summary-label">
-            Attempted Release
-        </div>
+<div
+    id="decision-summary"
+    class="decision-grid"
+>
 
-        <div class="rollout-summary-value">
-            -
-        </div>
+    <div class="decision-item">
 
-    </div>
-
-
-    <div class="rollout-summary-item">
-
-        <div class="rollout-summary-label">
-            Active Release
-        </div>
-
-        <div class="rollout-summary-value">
-            v1.0.0
-        </div>
-
-    </div>
-
-
-    <div class="rollout-summary-item">
-
-        <div class="rollout-summary-label">
-            RAN Validation
-        </div>
-
-        <div class="rollout-summary-value">
-            PASS
-        </div>
-
-    </div>
-
-
-    <div class="rollout-summary-item">
-
-        <div class="rollout-summary-label">
-            Failed Cells
-        </div>
-
-        <div class="rollout-summary-value">
-            None
-        </div>
+        Select a parameter change,
+        then choose
+        <strong>
+            Evaluate Candidate
+        </strong>
 
     </div>
 
 </div>
 
+<div
+    id="workflow"
+    class="workflow hidden"
+>
 </div>
 
+</div>
 
-<!-- ================================================= -->
-<!-- GUARDED ROLLOUT WORKFLOW -->
-<!-- ================================================= -->
 
 <div class="section">
 
 <h2>
-    Guarded Rollout Workflow
-</h2>
-
-
-<div
-    id="rollout-steps"
-    class="workflow"
->
-
-    <div class="step">
-
-        <div class="step-number">
-            -
-        </div>
-
-        <div>
-            Waiting for guarded rollout
-        </div>
-
-        <div>
-            -
-        </div>
-
-        <div class="small step-detail">
-            Ready for test
-        </div>
-
-    </div>
-
-</div>
-
-
-<div
-    id="incident-panel"
-    class="incident-panel hidden"
->
-
-<h2>
-    RAN REGRESSION DETECTED
+    1. Candidate Configuration
 </h2>
 
 <div
-    id="incident-content"
+    id="working-site-note"
+    class="section-note"
 >
 </div>
 
-</div>
-
-
-<div
-    id="recovery-panel"
-    class="recovery-strip hidden"
->
 
 <h3>
-    AUTOMATIC ROLLBACK COMPLETED
+    Cell / Carrier Parameters
 </h3>
 
 <div
-    id="recovery-content"
+    id="cell-editor"
+    class="table-panel"
 >
 </div>
 
+
+<h3 style="margin-top:16px">
+    Antenna Parameters
+</h3>
+
+<div
+    id="antenna-editor"
+    class="table-panel"
+>
 </div>
 
-</div>
 
-
-<!-- ================================================= -->
-<!-- CONTROLS -->
-<!-- ================================================= -->
-
-<div class="section">
-
-<h2>
-    RAN Failure & Recovery Controls
-</h2>
-
-
-<div class="control-panel">
+<div class="controls">
 
 <button
-    class="btn-danger"
-    onclick="injectRegression()"
+    class="btn-evaluate"
+    onclick="evaluateCandidate()"
 >
-    Inject Major RAN Regression
+    Evaluate Candidate
 </button>
 
-
 <button
-    class="btn-good"
-    onclick="restoreHealthy()"
+    class="btn-apply"
+    onclick="guardedApply()"
 >
-    Restore Healthy Baseline
+    Guarded Apply
 </button>
 
-
 <button
-    class="btn-rollout"
-    onclick="runGuardedRollout()"
+    class="btn-reset"
+    onclick="restoreBaseline()"
 >
-    Run Guarded Rollout
+    Restore Factory Baseline
 </button>
 
-
 <button
-    class="btn-warning"
-    onclick="manualRollback()"
->
-    Manual Application Rollback
-</button>
-
-
-<button
-    onclick="refreshDashboard()"
+    class="btn-refresh"
+    onclick="loadEverything()"
 >
     Refresh
 </button>
 
+<div
+    class="muted"
+    style="margin-top:9px; font-size:12px"
+>
 
-<div class="description">
+Evaluate is preview-only.
 
-<b>Inject Major RAN Regression</b>
-leaves the synthetic environment
-in a degraded state so the failure
-can be inspected directly.
-
-<br><br>
-
-<b>Restore Healthy Baseline</b>
-returns the live RAN state to the
-known-good baseline and clears the
-current demo result.
-
-<br><br>
-
-<b>Run Guarded Rollout</b>
-attempts release v1.1.0,
-collects post-change KPIs,
-detects unacceptable degradation
-and automatically restores v1.0.0.
+Guarded Apply promotes only when the resulting
+network state passes the guardrails.
 
 </div>
 
 </div>
 
 </div>
-
-
-<!-- ================================================= -->
-<!-- LIVE RAN KPI -->
-<!-- ================================================= -->
-
-<div class="section">
-
-<h2>
-    Live RAN KPI State
-</h2>
 
 
 <div
-    id="cells-grid"
-    class="cells-grid"
+    id="changes-section"
+    class="section hidden"
+>
+
+<h2>
+    2. Requested Change
+</h2>
+
+<div
+    id="change-table"
+    class="table-panel"
 >
 </div>
 
 </div>
 
 
-<!-- ================================================= -->
-<!-- THRESHOLDS -->
-<!-- ================================================= -->
-
-<div class="section">
+<div
+    id="impact-section"
+    class="section hidden"
+>
 
 <h2>
-    Validation Thresholds
+    3. Network Impact
 </h2>
+
+<div class="section-note">
+
+Only cells with a meaningful KPI or UE change are shown.
+The complete serving-cell view remains available under Advanced.
+
+</div>
+
+<div
+    id="impact-table"
+    class="table-panel"
+>
+</div>
+
+</div>
 
 
 <div
-    id="threshold-box"
-    class="threshold-box"
+    id="guardrails-section"
+    class="section hidden"
 >
-    Loading thresholds...
+
+<h2 id="guardrails-title">
+    4. Guardrail Decision
+</h2>
+
+<div
+    id="guardrail-metrics"
+    class="metric-strip"
+>
+</div>
+
+<div
+    id="failed-guardrails"
+    class="table-panel"
+>
+</div>
+
+<details>
+
+<summary>
+    Show all guardrail checks
+</summary>
+
+<div class="details-body">
+
+<div
+    id="all-guardrails"
+    class="table-panel"
+>
 </div>
 
 </div>
 
+</details>
 
-<!-- ================================================= -->
-<!-- EVENTS -->
-<!-- ================================================= -->
+</div>
+
+
+<div
+    id="reassociation-section"
+    class="section hidden"
+>
+
+<h2>
+    UE Reassociation
+</h2>
+
+<div class="section-note">
+
+A serving-cell change is not automatically a failure.
+The resulting service quality and load decide whether
+the candidate is accepted.
+
+</div>
+
+<div
+    id="reassociation-table"
+    class="table-panel"
+>
+</div>
+
+</div>
+
 
 <div class="section">
 
 <h2>
-    Operational Event Timeline
+    Current Serving View
 </h2>
 
+<div
+    id="serving-summary"
+    class="section-note"
+>
+</div>
+
+<div
+    id="serving-table"
+    class="table-panel"
+>
+</div>
+
+</div>
+
+
+<div class="section">
+
+<h2>
+    Recent Automation Events
+</h2>
 
 <div
     id="timeline"
@@ -1064,38 +1637,64 @@ and automatically restores v1.0.0.
 </div>
 
 
-<!-- ================================================= -->
-<!-- RAW -->
-<!-- ================================================= -->
-
 <div class="section">
 
 <h2>
-    Last API Operation
+    Advanced
 </h2>
 
 
+<details>
+
+<summary>
+    Show all active serving cells
+</summary>
+
+<div class="details-body">
+
+<div
+    id="all-serving-table"
+    class="table-panel"
+>
+</div>
+
+</div>
+
+</details>
+
+
+<details>
+
+<summary>
+    Show last raw API response
+</summary>
+
+<div class="details-body">
+
 <pre
     id="raw-output"
-    class="raw-output"
->No operation executed yet.</pre>
+    class="raw"
+>No operation yet.</pre>
+
+</div>
+
+</details>
 
 </div>
 
 
-<div class="section small">
+<div
+    class="section muted"
+    style="font-size:12px"
+>
 
-The event timeline is intentionally
-preserved when the baseline is restored.
+TX power, electrical tilt, bandwidth,
+RSRP, SINR, PRB utilization and active UE count
+are real categories of RAN configuration and KPIs.
 
-It represents operational history.
-
-The automatic rollback shown here
-restores simulated application and
-RAN release state.
-
-It is not an automatic Kubernetes
-Deployment rollback.
+Numerical configuration values, traffic assumptions and
+acceptance thresholds in this application remain
+learning-lab values.
 
 </div>
 
@@ -1106,9 +1705,25 @@ Deployment rollback.
 <script>
 
 
-// =====================================================
-// API
-// =====================================================
+let ranConfigData = null;
+
+let activeConfigSnapshot = null;
+
+let activeServingCells = [];
+
+let lastRawResponse = null;
+
+let lastStatusSnapshot = null;
+
+let contextRefreshInFlight = false;
+
+const LIVE_CONTEXT_REFRESH_MS =
+    60 * 1000;
+
+
+/* ===================================================== */
+/* API */
+/* ===================================================== */
 
 async function api(
     url,
@@ -1124,9 +1739,12 @@ async function api(
 
     if (!response.ok) {
 
+        const text =
+            await response.text();
+
+
         throw new Error(
-            `HTTP ${response.status} ` +
-            `${response.statusText}`
+            `HTTP ${response.status}: ${text}`
         );
     }
 
@@ -1135,34 +1753,29 @@ async function api(
 }
 
 
-// =====================================================
-// HELPERS
-// =====================================================
+/* ===================================================== */
+/* GENERAL HELPERS */
+/* ===================================================== */
 
-function signed(
-    value,
-    unit = ""
-) {
-
-    if (value > 0) {
-        return `+${value}${unit}`;
-    }
-
-    return `${value}${unit}`;
-}
-
-
-function statusBadge(
+function badge(
     status
 ) {
 
     if (
         status === "PASS"
+        ||
+        status === "APPLIED"
+        ||
+        status === "ACTIVE"
+        ||
+        status === "STABLE"
+        ||
+        status === "LIVE"
     ) {
 
         return `
-            <span class="pass-badge">
-                PASS
+            <span class="badge-pass">
+                ${status}
             </span>
         `;
     }
@@ -1170,294 +1783,540 @@ function statusBadge(
 
     if (
         status === "ROLLED_BACK"
+        ||
+        status === "DEGRADED"
+        ||
+        status === "WARNING"
+        ||
+        status === "STALE_LAST_KNOWN"
+        ||
+        status === "FALLBACK"
     ) {
 
         return `
-            <span class="warning-badge">
-                ROLLED BACK
+            <span class="badge-warning">
+                ${status}
+            </span>
+        `;
+    }
+
+
+    if (
+        status === "INFO"
+        ||
+        status === "CACHE"
+        ||
+        status === "FIXED"
+        ||
+        status === "EVALUATED"
+    ) {
+
+        return `
+            <span class="badge-info">
+                ${status}
             </span>
         `;
     }
 
 
     return `
-        <span class="fail-badge">
+        <span class="badge-fail">
             ${status}
         </span>
     `;
 }
 
 
-function formatTimestamp(
-    timestamp
+function displayValue(
+    value
 ) {
 
-    try {
+    if (
+        value === null
+        ||
+        value === undefined
+    ) {
 
-        return new Date(
-            timestamp
-        ).toLocaleTimeString(
-            [],
-            {
-                hour12: false
-            }
+        return "-";
+    }
+
+
+    if (
+        typeof value === "object"
+    ) {
+
+        if (
+            value.cell_id
+            &&
+            value.prb_utilization_pct
+                !== undefined
+        ) {
+
+            return (
+                `${value.cell_id}`
+                + ` / `
+                + `${value.prb_utilization_pct}%`
+            );
+        }
+
+
+        return JSON.stringify(
+            value
         );
-
     }
 
-    catch {
 
-        return timestamp;
-    }
+    return value;
 }
 
 
-// =====================================================
-// RESET CURRENT DEMO VIEW
-// =====================================================
-
-function resetDemoView(
-    headlineText =
-        "READY — HEALTHY BASELINE"
+function signed(
+    value,
+    unit = ""
 ) {
 
-    const section =
-        document.getElementById(
-            "rollout-result-section"
+    if (
+        value === null
+        ||
+        value === undefined
+    ) {
+
+        return "-";
+    }
+
+
+    const numeric =
+        Number(
+            value
         );
 
 
-    section.className =
-        "rollout-main rollout-main-success";
+    if (
+        Number.isNaN(
+            numeric
+        )
+    ) {
+
+        return value;
+    }
 
 
-    document.getElementById(
-        "rollout-headline"
-    ).textContent =
-        headlineText;
+    if (
+        numeric > 0
+    ) {
+
+        return `+${numeric}${unit}`;
+    }
 
 
-    document.getElementById(
-        "rollout-summary"
-    ).innerHTML = `
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                Attempted Release
-            </div>
-
-            <div class="rollout-summary-value">
-                -
-            </div>
-
-        </div>
+    return `${numeric}${unit}`;
+}
 
 
-        <div class="rollout-summary-item">
+function deltaClass(
+    value,
+    lowerIsBetter = false
+) {
 
-            <div class="rollout-summary-label">
-                Active Release
-            </div>
+    if (
+        value === null
+        ||
+        value === undefined
+        ||
+        value === 0
+    ) {
 
-            <div class="rollout-summary-value">
-                v1.0.0
-            </div>
-
-        </div>
-
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                RAN Validation
-            </div>
-
-            <div class="rollout-summary-value">
-                PASS
-            </div>
-
-        </div>
+        return "";
+    }
 
 
-        <div class="rollout-summary-item">
+    if (
+        lowerIsBetter
+    ) {
 
-            <div class="rollout-summary-label">
-                Failed Cells
-            </div>
-
-            <div class="rollout-summary-value">
-                None
-            </div>
-
-        </div>
-    `;
+        return (
+            value < 0
+            ? "good-delta"
+            : "bad-delta"
+        );
+    }
 
 
-    document.getElementById(
-        "rollout-steps"
-    ).innerHTML = `
-
-        <div class="step">
-
-            <div class="step-number">
-                -
-            </div>
-
-            <div>
-                Waiting for guarded rollout
-            </div>
-
-            <div>
-                -
-            </div>
-
-            <div class="small step-detail">
-                Ready for next test
-            </div>
-
-        </div>
-    `;
-
-
-    document.getElementById(
-        "incident-panel"
-    ).classList.add(
-        "hidden"
-    );
-
-
-    document.getElementById(
-        "recovery-panel"
-    ).classList.add(
-        "hidden"
+    return (
+        value > 0
+        ? "good-delta"
+        : "bad-delta"
     );
 }
 
 
-// =====================================================
-// MANUAL INCIDENT OUTCOME
-// =====================================================
+function selectedSite() {
 
-function showManualRegressionOutcome() {
-
-    const section =
-        document.getElementById(
-            "rollout-result-section"
-        );
-
-
-    section.className =
-        "rollout-main rollout-main-fail";
-
-
-    document.getElementById(
-        "rollout-headline"
-    ).textContent =
-        "MANUAL RAN REGRESSION ACTIVE";
-
-
-    document.getElementById(
-        "rollout-summary"
-    ).innerHTML = `
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                Release
-            </div>
-
-            <div class="rollout-summary-value">
-                v1.0.0
-            </div>
-
-        </div>
-
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                Application Health
-            </div>
-
-            <div class="rollout-summary-value">
-                HEALTHY
-            </div>
-
-        </div>
-
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                RAN Validation
-            </div>
-
-            <div class="rollout-summary-value">
-                FAIL
-            </div>
-
-        </div>
-
-
-        <div class="rollout-summary-item">
-
-            <div class="rollout-summary-label">
-                Failed Cells
-            </div>
-
-            <div class="rollout-summary-value">
-                CELL-001, CELL-002
-            </div>
-
-        </div>
-    `;
-
-
-    document.getElementById(
-        "rollout-steps"
-    ).innerHTML = `
-
-        <div class="step">
-
-            <div class="step-number">
-                1
-            </div>
-
-            <div>
-                Manual KPI regression injected
-            </div>
-
-            <div>
-                ${statusBadge("FAIL")}
-            </div>
-
-            <div class="small step-detail">
-                Inspect live KPIs
-            </div>
-
-        </div>
-    `;
-
-
-    document.getElementById(
-        "incident-panel"
-    ).classList.add(
-        "hidden"
-    );
-
-
-    document.getElementById(
-        "recovery-panel"
-    ).classList.add(
-        "hidden"
+    return (
+        document
+            .getElementById(
+                "site-filter"
+            )
+            .value
     );
 }
 
 
-// =====================================================
-// SYSTEM STATUS
-// =====================================================
+function selectedBand() {
+
+    return (
+        document
+            .getElementById(
+                "band-filter"
+            )
+            .value
+    );
+}
+
+
+function showRaw(
+    data
+) {
+
+    lastRawResponse =
+        data;
+
+
+    document.getElementById(
+        "raw-output"
+    ).textContent =
+
+        JSON.stringify(
+            data,
+            null,
+            2
+        );
+}
+
+
+function activeGuardrailName(
+    name
+) {
+
+    if (
+        name === "MAX_CANDIDATE_PRB"
+    ) {
+
+        return "MAX_ACTIVE_PRB";
+    }
+
+
+    return name;
+}
+
+
+function operationalFailureText(
+    baselineHealth
+) {
+
+    const failed =
+        baselineHealth.failed_checks
+        || [];
+
+
+    if (
+        failed.length === 0
+    ) {
+
+        return "No active-state safety finding.";
+    }
+
+
+    const check =
+        failed[0];
+
+
+    const observed =
+        check.candidate
+        !== null
+        &&
+        check.candidate
+        !== undefined
+
+        ? check.candidate
+
+        : check.baseline;
+
+
+    return (
+        `${activeGuardrailName(check.name)}: `
+        + `${displayValue(observed)}`
+        + ` / limit ${displayValue(check.limit)}`
+    );
+}
+
+
+function renderOperationalContext(
+    status
+) {
+
+    const weather =
+        status.weather
+        || {};
+
+
+    const baselineHealth =
+        status.baseline_health
+        || {};
+
+
+    const service =
+        status.service
+        || {};
+
+
+    lastStatusSnapshot =
+        status;
+
+
+    document.getElementById(
+        "weather-source-status"
+    ).innerHTML =
+        badge(
+            weather.source_status
+            || "UNKNOWN"
+        );
+
+
+    document.getElementById(
+        "weather-temperature"
+    ).textContent =
+        weather.temperature_c
+        !== undefined
+        &&
+        weather.temperature_c
+        !== null
+
+        ? `${weather.temperature_c} °C`
+
+        : "-";
+
+
+    document.getElementById(
+        "weather-rain"
+    ).textContent =
+        weather.rain_rate_mm_per_h
+        !== undefined
+        &&
+        weather.rain_rate_mm_per_h
+        !== null
+
+        ? `${weather.rain_rate_mm_per_h} mm/h`
+
+        : "-";
+
+
+    document.getElementById(
+        "weather-humidity"
+    ).textContent =
+        weather.relative_humidity_pct
+        !== undefined
+        &&
+        weather.relative_humidity_pct
+        !== null
+
+        ? `${weather.relative_humidity_pct}%`
+
+        : "-";
+
+
+    document.getElementById(
+        "weather-pressure"
+    ).textContent =
+        weather.pressure_hpa
+        !== undefined
+        &&
+        weather.pressure_hpa
+        !== null
+
+        ? `${weather.pressure_hpa} hPa`
+
+        : "-";
+
+
+    const windSpeed =
+        weather.wind_speed_m_per_s;
+
+
+    const windDirection =
+        weather.wind_direction_deg;
+
+
+    document.getElementById(
+        "weather-wind"
+    ).textContent =
+        windSpeed
+        !== undefined
+        &&
+        windSpeed
+        !== null
+
+        ? (
+            `${windSpeed} m/s`
+            + (
+                windDirection
+                !== undefined
+                &&
+                windDirection
+                !== null
+
+                ? ` / ${windDirection}°`
+
+                : ""
+            )
+        )
+
+        : "-";
+
+
+    document.getElementById(
+        "weather-cache-age"
+    ).textContent =
+        weather.cache_age_seconds
+        !== undefined
+        &&
+        weather.cache_age_seconds
+        !== null
+
+        ? `${Math.round(weather.cache_age_seconds)} s`
+
+        : "-";
+
+
+    const locationName =
+        weather.location
+        &&
+        weather.location.name
+
+        ? weather.location.name
+
+        : "Jesenice u Prahy";
+
+
+    document.getElementById(
+        "weather-valid-at"
+    ).textContent =
+        (
+            `${weather.timestamp || "-"}`
+            + ` / ${locationName}`
+        );
+
+
+    const weatherErrorField =
+        document.getElementById(
+            "weather-error-field"
+        );
+
+
+    if (
+        weather.error
+    ) {
+
+        weatherErrorField.classList.remove(
+            "hidden"
+        );
+
+
+        document.getElementById(
+            "weather-error"
+        ).textContent =
+            weather.error;
+    }
+
+    else {
+
+        weatherErrorField.classList.add(
+            "hidden"
+        );
+    }
+
+
+    document.getElementById(
+        "baseline-health-badge"
+    ).innerHTML =
+        badge(
+            baselineHealth.status
+            || "UNKNOWN"
+        );
+
+
+    document.getElementById(
+        "baseline-active-config"
+    ).textContent =
+        status.ran_config_version
+        || "-";
+
+
+    document.getElementById(
+        "baseline-requested-ues"
+    ).textContent =
+        displayValue(
+            service.requested_active_ues
+        );
+
+
+    document.getElementById(
+        "baseline-served-ues"
+    ).textContent =
+        displayValue(
+            service.served_active_ues
+        );
+
+
+    document.getElementById(
+        "baseline-served-ratio"
+    ).textContent =
+        service.served_ratio_pct
+        !== undefined
+        &&
+        service.served_ratio_pct
+        !== null
+
+        ? `${service.served_ratio_pct}%`
+
+        : "-";
+
+
+    document.getElementById(
+        "baseline-failed-count"
+    ).textContent =
+        displayValue(
+            baselineHealth.failed_check_count
+        );
+
+
+    const baselineFailure =
+        document.getElementById(
+            "baseline-failure"
+        );
+
+
+    baselineFailure.textContent =
+        operationalFailureText(
+            baselineHealth
+        );
+
+
+    baselineFailure.className =
+        (
+            baselineHealth.status
+            === "FAIL"
+
+            ? "context-field-value fail"
+
+            : "context-field-value pass"
+        );
+}
+
+
+/* ===================================================== */
+/* STATUS */
+/* ===================================================== */
 
 async function loadStatus() {
 
@@ -1468,21 +2327,15 @@ async function loadStatus() {
 
 
     document.getElementById(
-        "environment"
+        "application-release"
     ).textContent =
-        status.environment;
+        status.application_release;
 
 
     document.getElementById(
-        "application-health"
+        "ran-version"
     ).textContent =
-        status.application_health;
-
-
-    document.getElementById(
-        "active-release"
-    ).textContent =
-        status.active_release;
+        status.ran_config_version;
 
 
     document.getElementById(
@@ -1497,28 +2350,36 @@ async function loadStatus() {
         status.ran_validation;
 
 
+    document.getElementById(
+        "served-ratio"
+    ).textContent =
+        `${status.served_ratio_pct}%`;
+
+
+    renderOperationalContext(
+        status
+    );
+
+
     const banner =
         document.getElementById(
             "system-banner"
         );
 
 
-    banner.className =
-        "banner";
-
-
     if (
-        status.ran_validation
+        status.baseline_health
+        &&
+        status.baseline_health.status
         === "FAIL"
     ) {
 
-        banner.classList.add(
-            "banner-fail"
-        );
+        banner.className =
+            "banner banner-bad";
+
 
         banner.textContent =
-            "RAN KPI REGRESSION DETECTED";
-
+            "APPLICATION HEALTHY - ACTIVE RAN OUTSIDE SAFE ENVELOPE";
     }
 
     else if (
@@ -1526,501 +2387,1917 @@ async function loadStatus() {
         === "ROLLED_BACK"
     ) {
 
-        banner.classList.add(
-            "banner-warning"
-        );
+        banner.className =
+            "banner banner-warning";
+
 
         banner.textContent =
-            "ROLLBACK COMPLETED — SERVICE RECOVERED";
-
-    }
-
-    else if (
-        status.rollout_state
-        === "BLOCKED"
-    ) {
-
-        banner.classList.add(
-            "banner-blocked"
-        );
-
-        banner.textContent =
-            "ROLLOUT BLOCKED";
-
+            "CANDIDATE REJECTED - KNOWN-GOOD CONFIG RESTORED";
     }
 
     else {
 
-        banner.classList.add(
-            "banner-stable"
-        );
+        banner.className =
+            "banner banner-good";
+
 
         banner.textContent =
-            "SYSTEM STABLE — RAN VALIDATION PASS";
+            "APPLICATION HEALTHY - ACTIVE RAN INSIDE SAFE ENVELOPE";
+    }
+
+
+    return status;
+}
+
+
+/* ===================================================== */
+/* CONFIG LOAD */
+/* ===================================================== */
+
+async function loadRanConfig() {
+
+    const previousSite =
+        document.getElementById(
+            "site-filter"
+        ).value;
+
+
+    ranConfigData =
+        await api(
+            "/ran-config"
+        );
+
+
+    activeConfigSnapshot =
+        JSON.parse(
+            JSON.stringify(
+                ranConfigData.active
+            )
+        );
+
+
+    populateSiteFilter(
+        previousSite
+    );
+
+
+    updateCellCountSummary();
+
+
+    renderWorkingView();
+}
+
+
+/* ===================================================== */
+/* SITE FILTER */
+/* ===================================================== */
+
+function populateSiteFilter(
+    previousSite
+) {
+
+    const select =
+        document.getElementById(
+            "site-filter"
+        );
+
+
+    const sites =
+        ranConfigData
+            .topology
+            .sites;
+
+
+    select.innerHTML =
+        "";
+
+
+    for (
+        const siteId
+        of sites
+    ) {
+
+        const option =
+            document.createElement(
+                "option"
+            );
+
+
+        option.value =
+            siteId;
+
+
+        option.textContent =
+            siteId;
+
+
+        select.appendChild(
+            option
+        );
+    }
+
+
+    if (
+        previousSite
+        &&
+        sites.includes(
+            previousSite
+        )
+    ) {
+
+        select.value =
+            previousSite;
+
+        return;
+    }
+
+
+    const preferredSite =
+        "SITE-JESENICE-01";
+
+
+    if (
+        sites.includes(
+            preferredSite
+        )
+    ) {
+
+        select.value =
+            preferredSite;
+    }
+
+    else if (
+        sites.length > 0
+    ) {
+
+        select.value =
+            sites[0];
     }
 }
 
 
-// =====================================================
-// SAFETY
-// =====================================================
+/* ===================================================== */
+/* WORKING VIEW */
+/* ===================================================== */
 
-async function loadSafety() {
+function renderWorkingView() {
 
-    const safety =
-        await api(
-            "/safety-score"
+    if (
+        !ranConfigData
+    ) {
+
+        return;
+    }
+
+
+    renderCellEditor();
+
+    renderAntennaEditor();
+
+    renderServingView();
+}
+
+
+/* ===================================================== */
+/* CELL EDITOR */
+/* ===================================================== */
+
+function renderCellEditor() {
+
+    const siteId =
+        selectedSite();
+
+
+    const band =
+        selectedBand();
+
+
+    const cells =
+        Object.entries(
+            ranConfigData
+                .active
+                .cells
+        )
+        .filter(
+            (
+                [
+                    cellId,
+                    config
+                ]
+            ) => {
+
+                if (
+                    config.site_id
+                    !== siteId
+                ) {
+
+                    return false;
+                }
+
+
+                if (
+                    band !== "ALL"
+                    &&
+                    config.band !== band
+                ) {
+
+                    return false;
+                }
+
+
+                return true;
+            }
         );
 
 
     document.getElementById(
-        "safety-score"
+        "working-site-note"
     ).textContent =
-        `${safety.total}/100`;
-}
-
-
-// =====================================================
-// VALIDATION
-// =====================================================
-
-async function loadValidation() {
-
-    const validation =
-        await api(
-            "/validation"
+        (
+            `Working site: ${siteId}. `
+            + `${cells.length} configured cells are shown. `
+            + `Changing the site or band filter discards unsaved form edits.`
         );
 
 
-    renderCells(
-        validation.cells
-    );
+    const container =
+        document.getElementById(
+            "cell-editor"
+        );
 
 
     if (
-        validation.cells.length
-        > 0
+        cells.length === 0
     ) {
 
-        const thresholds =
-            validation
-                .cells[0]
-                .thresholds;
+        container.innerHTML =
+            `
+            <div style="padding:14px">
+                No cells match the current filter.
+            </div>
+            `;
 
-
-        document.getElementById(
-            "threshold-box"
-        ).innerHTML = `
-
-            <b>
-                Failure thresholds
-            </b>
-
-            <br>
-
-            PRB absolute change:
-            &gt;
-            ${thresholds.prb_change}
-            percentage points
-
-            <br>
-
-            SINR degradation:
-            &gt;
-            ${thresholds.sinr_drop}
-            dB
-
-            <br>
-
-            RSRP degradation:
-            &gt;
-            ${thresholds.rsrp_drop}
-            dB
-
-            <br>
-
-            Active user change:
-            &gt;
-            ${thresholds.user_change}
-
-            <br><br>
-
-            <span class="small">
-
-            SINR and RSRP negative
-            deltas indicate degradation.
-
-            Large positive or negative
-            user changes are treated as
-            abnormal traffic behaviour.
-
-            </span>
-        `;
+        return;
     }
-}
 
 
-// =====================================================
-// CELL CARDS
-// =====================================================
+    container.innerHTML = `
 
-function renderCells(
-    cells
-) {
-
-    const grid =
-        document.getElementById(
-            "cells-grid"
-        );
-
-
-    grid.innerHTML = "";
-
-
-    for (
-        const cell
-        of cells
-    ) {
-
-        const card =
-            document.createElement(
-                "div"
-            );
-
-
-        const cellFailed =
-            Object.values(
-                cell.checks
-            ).includes(
-                "FAIL"
-            );
-
-
-        card.className =
-            "cell-card";
-
-
-        card.innerHTML = `
-
-        <div class="cell-header">
-
-            <h3>
-                ${cell.cell_id}
-            </h3>
-
-            ${
-                statusBadge(
-                    cellFailed
-                    ? "FAIL"
-                    : "PASS"
-                )
-            }
-
-        </div>
-
-
-        <table class="kpi-table">
+        <table>
 
         <thead>
 
-        <tr>
+            <tr>
 
-            <th>KPI</th>
-            <th>Baseline</th>
-            <th>Current</th>
-            <th>Delta</th>
-            <th>Check</th>
+                <th>Cell</th>
+                <th>Tech</th>
+                <th>Band</th>
+                <th>Frequency</th>
+                <th>TX Power</th>
+                <th>Bandwidth</th>
 
-        </tr>
+            </tr>
 
         </thead>
 
 
         <tbody>
 
+        ${
+            cells.map(
+                (
+                    [
+                        cellId,
+                        config
+                    ]
+                ) => {
 
-        ${kpiRow(
-            "PRB",
-            `${cell.baseline.prb_utilization}%`,
-            `${cell.current.prb_utilization}%`,
-            signed(
-                cell.delta.prb,
-                " pp"
-            ),
-            cell.checks.prb
-        )}
-
-
-        ${kpiRow(
-            "SINR",
-            `${cell.baseline.sinr_db} dB`,
-            `${cell.current.sinr_db} dB`,
-            signed(
-                cell.delta.sinr,
-                " dB"
-            ),
-            cell.checks.sinr
-        )}
+                    const allowedBandwidth =
+                        ranConfigData
+                            .allowed_ranges
+                            .bandwidth_mhz_by_band[
+                                config.band
+                            ];
 
 
-        ${kpiRow(
-            "RSRP",
-            `${cell.baseline.rsrp_dbm} dBm`,
-            `${cell.current.rsrp_dbm} dBm`,
-            signed(
-                cell.delta.rsrp,
-                " dB"
-            ),
-            cell.checks.rsrp
-        )}
+                    const options =
+                        allowedBandwidth
+                            .map(
+                                value => `
+
+                                <option
+                                    value="${value}"
+                                    ${
+                                        value
+                                        === config.bandwidth_mhz
+                                        ? "selected"
+                                        : ""
+                                    }
+                                >
+                                    ${value}
+                                </option>
+                                `
+                            )
+                            .join("");
 
 
-        ${kpiRow(
-            "Users",
-            cell.baseline.active_users,
-            cell.current.active_users,
-            signed(
-                cell.delta.users
-            ),
-            cell.checks.users
-        )}
+                    return `
 
+                        <tr>
+
+                            <td>
+
+                                <span class="cell-id">
+                                    ${cellId}
+                                </span>
+
+                                <br>
+
+                                <span class="muted">
+                                    ${config.sector_id}
+                                </span>
+
+                            </td>
+
+                            <td>
+                                ${config.technology}
+                            </td>
+
+                            <td>
+                                ${config.band}
+                            </td>
+
+                            <td>
+                                ${config.carrier_frequency_mhz}
+                                MHz
+                            </td>
+
+                            <td>
+
+                                <input
+                                    id="cell-${cellId}-tx"
+                                    type="number"
+                                    min="${ranConfigData.allowed_ranges.tx_power_dbm.min}"
+                                    max="${ranConfigData.allowed_ranges.tx_power_dbm.max}"
+                                    step="0.5"
+                                    value="${config.tx_power_dbm}"
+                                >
+
+                                dBm
+
+                            </td>
+
+                            <td>
+
+                                <select
+                                    id="cell-${cellId}-bandwidth"
+                                >
+                                    ${options}
+                                </select>
+
+                                MHz
+
+                            </td>
+
+                        </tr>
+                    `;
+                }
+            )
+            .join("")
+        }
 
         </tbody>
 
         </table>
-        `;
-
-
-        grid.appendChild(
-            card
-        );
-    }
-}
-
-
-function kpiRow(
-    name,
-    baseline,
-    current,
-    delta,
-    check
-) {
-
-    const fail =
-        check === "FAIL";
-
-
-    return `
-
-    <tr>
-
-        <td>
-            ${name}
-        </td>
-
-        <td>
-            ${baseline}
-        </td>
-
-        <td
-            class="${
-                fail
-                    ? "kpi-fail"
-                    : ""
-            }"
-        >
-            ${current}
-        </td>
-
-        <td
-            class="${
-                fail
-                    ? "delta-bad"
-                    : "delta-good"
-            }"
-        >
-            ${delta}
-        </td>
-
-        <td
-            class="${
-                fail
-                    ? "kpi-fail"
-                    : "kpi-pass"
-            }"
-        >
-            ${check}
-        </td>
-
-    </tr>
     `;
 }
 
 
-// =====================================================
-// INJECT REGRESSION
-// =====================================================
+/* ===================================================== */
+/* ANTENNA EDITOR */
+/* ===================================================== */
 
-async function injectRegression() {
+function renderAntennaEditor() {
 
-    try {
+    const siteId =
+        selectedSite();
 
-        const result =
-            await api(
 
-                "/configuration?mode=degraded",
+    const band =
+        selectedBand();
 
-                {
-                    method: "POST"
+
+    const topology =
+        ranConfigData
+            .topology
+            .antennas;
+
+
+    const antennas =
+        Object.entries(
+            ranConfigData
+                .active
+                .antennas
+        )
+        .filter(
+            (
+                [
+                    antennaId,
+                    config
+                ]
+            ) => {
+
+                if (
+                    config.site_id
+                    !== siteId
+                ) {
+
+                    return false;
                 }
-            );
 
 
-        showRaw(
-            result
+                if (
+                    band === "ALL"
+                ) {
+
+                    return true;
+                }
+
+
+                const attachedCells =
+                    topology[
+                        antennaId
+                    ]
+                    .cells;
+
+
+                return attachedCells.some(
+                    cellId =>
+                        ranConfigData
+                            .active
+                            .cells[
+                                cellId
+                            ]
+                            .band
+                        === band
+                );
+            }
         );
 
 
-        await refreshDashboard();
+    const container =
+        document.getElementById(
+            "antenna-editor"
+        );
 
 
-        showManualRegressionOutcome();
-
-
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-        });
-
-    }
-
-    catch (
-        error
+    if (
+        antennas.length === 0
     ) {
 
-        showError(
-            error
-        );
+        container.innerHTML =
+            `
+            <div style="padding:14px">
+                No antennas match the current filter.
+            </div>
+            `;
+
+        return;
     }
+
+
+    container.innerHTML = `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Antenna</th>
+                <th>Sector</th>
+                <th>Azimuth</th>
+                <th>Electrical Tilt</th>
+                <th class="left">Affected Cells</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            antennas.map(
+                (
+                    [
+                        antennaId,
+                        config
+                    ]
+                ) => {
+
+                    const topo =
+                        topology[
+                            antennaId
+                        ];
+
+
+                    return `
+
+                        <tr>
+
+                            <td>
+                                <span class="cell-id">
+                                    ${antennaId}
+                                </span>
+                            </td>
+
+                            <td>
+                                ${config.sector_id}
+                            </td>
+
+                            <td>
+                                ${config.azimuth_deg}
+                                deg
+                            </td>
+
+                            <td>
+
+                                <input
+                                    id="antenna-${antennaId}-tilt"
+                                    type="number"
+                                    min="${ranConfigData.allowed_ranges.electrical_tilt_deg.min}"
+                                    max="${ranConfigData.allowed_ranges.electrical_tilt_deg.max}"
+                                    step="0.5"
+                                    value="${config.electrical_tilt_deg}"
+                                >
+
+                                deg
+
+                            </td>
+
+                            <td class="left">
+                                ${topo.cells.join(", ")}
+                            </td>
+
+                        </tr>
+                    `;
+                }
+            )
+            .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
 }
 
 
-// =====================================================
-// RESTORE HEALTHY
-// =====================================================
+/* ===================================================== */
+/* BUILD CANDIDATE REQUEST */
+/* ===================================================== */
 
-async function restoreHealthy() {
+function buildCandidateRequest() {
 
-    try {
+    const cells = {};
 
-        const result =
-            await api(
+    const antennas = {};
 
-                "/configuration?mode=healthy",
 
-                {
-                    method: "POST"
-                }
+    for (
+        const [
+            cellId,
+            activeConfig
+        ]
+        of Object.entries(
+            ranConfigData
+                .active
+                .cells
+        )
+    ) {
+
+        const txInput =
+            document.getElementById(
+                `cell-${cellId}-tx`
             );
 
 
-        showRaw(
-            result
-        );
+        const bandwidthInput =
+            document.getElementById(
+                `cell-${cellId}-bandwidth`
+            );
 
 
-        await refreshDashboard();
+        if (
+            !txInput
+            ||
+            !bandwidthInput
+        ) {
+
+            continue;
+        }
 
 
-        resetDemoView(
-            "HEALTHY BASELINE RESTORED — READY FOR NEXT TEST"
-        );
+        const tx =
+            Number(
+                txInput.value
+            );
 
 
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-        });
+        const bandwidth =
+            Number(
+                bandwidthInput.value
+            );
 
+
+        const update = {};
+
+
+        if (
+            tx
+            !== activeConfig.tx_power_dbm
+        ) {
+
+            update.tx_power_dbm =
+                tx;
+        }
+
+
+        if (
+            bandwidth
+            !== activeConfig.bandwidth_mhz
+        ) {
+
+            update.bandwidth_mhz =
+                bandwidth;
+        }
+
+
+        if (
+            Object.keys(
+                update
+            ).length
+            > 0
+        ) {
+
+            cells[
+                cellId
+            ] =
+                update;
+        }
     }
 
-    catch (
-        error
+
+    for (
+        const [
+            antennaId,
+            activeConfig
+        ]
+        of Object.entries(
+            ranConfigData
+                .active
+                .antennas
+        )
     ) {
 
-        showError(
-            error
-        );
+        const input =
+            document.getElementById(
+                `antenna-${antennaId}-tilt`
+            );
+
+
+        if (
+            !input
+        ) {
+
+            continue;
+        }
+
+
+        const tilt =
+            Number(
+                input.value
+            );
+
+
+        if (
+            tilt
+            !== activeConfig.electrical_tilt_deg
+        ) {
+
+            antennas[
+                antennaId
+            ] = {
+
+                electrical_tilt_deg:
+                    tilt
+            };
+        }
     }
+
+
+    return {
+        cells,
+        antennas
+    };
 }
 
 
-// =====================================================
-// MANUAL ROLLBACK
-// =====================================================
+/* ===================================================== */
+/* CONFIG CHANGE TABLE */
+/* ===================================================== */
 
-async function manualRollback() {
+function renderConfigChanges(
+    candidate
+) {
 
-    try {
-
-        const result =
-            await api(
-
-                "/rollback",
-
-                {
-                    method: "POST"
-                }
-            );
+    const rows = [];
 
 
-        showRaw(
-            result
-        );
-
-
-        await refreshDashboard();
-
-
-        resetDemoView(
-            "MANUAL ROLLBACK COMPLETED — BASELINE RESTORED"
-        );
-
-
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-        });
-
-    }
-
-    catch (
-        error
+    for (
+        const [
+            cellId,
+            candidateConfig
+        ]
+        of Object.entries(
+            candidate.cells
+        )
     ) {
 
-        showError(
-            error
-        );
+        const baseline =
+            activeConfigSnapshot
+                .cells[
+                    cellId
+                ];
+
+
+        if (
+            candidateConfig.tx_power_dbm
+            !== baseline.tx_power_dbm
+        ) {
+
+            rows.push({
+
+                object:
+                    cellId,
+
+                parameter:
+                    "TX Power",
+
+                baseline:
+                    `${baseline.tx_power_dbm} dBm`,
+
+                candidate:
+                    `${candidateConfig.tx_power_dbm} dBm`
+            });
+        }
+
+
+        if (
+            candidateConfig.bandwidth_mhz
+            !== baseline.bandwidth_mhz
+        ) {
+
+            rows.push({
+
+                object:
+                    cellId,
+
+                parameter:
+                    "Bandwidth",
+
+                baseline:
+                    `${baseline.bandwidth_mhz} MHz`,
+
+                candidate:
+                    `${candidateConfig.bandwidth_mhz} MHz`
+            });
+        }
     }
+
+
+    for (
+        const [
+            antennaId,
+            candidateConfig
+        ]
+        of Object.entries(
+            candidate.antennas
+        )
+    ) {
+
+        const baseline =
+            activeConfigSnapshot
+                .antennas[
+                    antennaId
+                ];
+
+
+        if (
+            candidateConfig.electrical_tilt_deg
+            !== baseline.electrical_tilt_deg
+        ) {
+
+            rows.push({
+
+                object:
+                    antennaId,
+
+                parameter:
+                    "Electrical Tilt",
+
+                baseline:
+                    `${baseline.electrical_tilt_deg} deg`,
+
+                candidate:
+                    `${candidateConfig.electrical_tilt_deg} deg`
+            });
+        }
+    }
+
+
+    const section =
+        document.getElementById(
+            "changes-section"
+        );
+
+
+    const container =
+        document.getElementById(
+            "change-table"
+        );
+
+
+    section.classList.remove(
+        "hidden"
+    );
+
+
+    if (
+        rows.length === 0
+    ) {
+
+        container.innerHTML =
+            `
+            <div style="padding:14px">
+                No configuration difference.
+            </div>
+            `;
+
+        return;
+    }
+
+
+    container.innerHTML = `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Object</th>
+                <th>Parameter</th>
+                <th>Active</th>
+                <th>Candidate</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            rows.map(
+                row => `
+
+                    <tr>
+
+                        <td>
+                            ${row.object}
+                        </td>
+
+                        <td>
+                            ${row.parameter}
+                        </td>
+
+                        <td>
+                            ${row.baseline}
+                        </td>
+
+                        <td>
+                            <b>
+                                ${row.candidate}
+                            </b>
+                        </td>
+
+                    </tr>
+                `
+            )
+            .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
 }
 
 
-// =====================================================
-// GUARDED ROLLOUT
-// =====================================================
+/* ===================================================== */
+/* NETWORK IMPACT */
+/* ===================================================== */
 
-async function runGuardedRollout() {
+function impactScore(
+    cell
+) {
+
+    return (
+        Math.abs(
+            Number(
+                cell.delta.sinr
+                || 0
+            )
+        )
+        * 4
+
+        +
+
+        Math.abs(
+            Number(
+                cell.delta.rsrp
+                || 0
+            )
+        )
+        * 3
+
+        +
+
+        Math.abs(
+            Number(
+                cell.delta.prb
+                || 0
+            )
+        )
+        * 2
+
+        +
+
+        Math.abs(
+            Number(
+                cell.delta.users
+                || 0
+            )
+        )
+    );
+}
+
+
+function meaningfulImpact(
+    cell
+) {
+
+    return (
+
+        Math.abs(
+            Number(
+                cell.delta.sinr
+                || 0
+            )
+        )
+        >= 0.1
+
+        ||
+
+        Math.abs(
+            Number(
+                cell.delta.rsrp
+                || 0
+            )
+        )
+        >= 0.1
+
+        ||
+
+        Math.abs(
+            Number(
+                cell.delta.prb
+                || 0
+            )
+        )
+        >= 0.1
+
+        ||
+
+        Math.abs(
+            Number(
+                cell.delta.users
+                || 0
+            )
+        )
+        >= 1
+    );
+}
+
+
+function renderImpact(
+    validation
+) {
+
+    const section =
+        document.getElementById(
+            "impact-section"
+        );
+
+
+    const container =
+        document.getElementById(
+            "impact-table"
+        );
+
+
+    if (
+        !validation
+        ||
+        !Array.isArray(
+            validation.cells
+        )
+    ) {
+
+        section.classList.add(
+            "hidden"
+        );
+
+        return;
+    }
+
+
+    const interesting =
+        validation
+            .cells
+            .filter(
+                meaningfulImpact
+            )
+            .sort(
+                (
+                    left,
+                    right
+                ) =>
+                    impactScore(
+                        right
+                    )
+                    -
+                    impactScore(
+                        left
+                    )
+            )
+            .slice(
+                0,
+                12
+            );
+
+
+    section.classList.remove(
+        "hidden"
+    );
+
+
+    if (
+        interesting.length === 0
+    ) {
+
+        container.innerHTML =
+            `
+            <div style="padding:14px">
+                No meaningful serving-cell KPI change detected.
+            </div>
+            `;
+
+        return;
+    }
+
+
+    container.innerHTML = `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Cell</th>
+                <th>RSRP Delta</th>
+                <th>SINR Delta</th>
+                <th>PRB Delta</th>
+                <th>UE Delta</th>
+                <th>Status</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            interesting.map(
+                cell => `
+
+                    <tr>
+
+                        <td>
+                            ${cell.cell_id}
+                        </td>
+
+                        <td
+                            class="${
+                                deltaClass(
+                                    cell.delta.rsrp
+                                )
+                            }"
+                        >
+                            ${signed(
+                                cell.delta.rsrp,
+                                " dB"
+                            )}
+                        </td>
+
+                        <td
+                            class="${
+                                deltaClass(
+                                    cell.delta.sinr
+                                )
+                            }"
+                        >
+                            ${signed(
+                                cell.delta.sinr,
+                                " dB"
+                            )}
+                        </td>
+
+                        <td
+                            class="${
+                                deltaClass(
+                                    cell.delta.prb,
+                                    true
+                                )
+                            }"
+                        >
+                            ${signed(
+                                cell.delta.prb,
+                                " pp"
+                            )}
+                        </td>
+
+                        <td>
+                            ${signed(
+                                cell.delta.users
+                            )}
+                        </td>
+
+                        <td>
+                            ${
+                                (
+                                    cell.checks.prb === "FAIL"
+                                    ||
+                                    cell.checks.sinr === "FAIL"
+                                    ||
+                                    cell.checks.rsrp === "FAIL"
+                                )
+                                ? badge("FAIL")
+                                : badge("PASS")
+                            }
+                        </td>
+
+                    </tr>
+                `
+            )
+            .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
+}
+
+
+/* ===================================================== */
+/* GUARDRAILS */
+/* ===================================================== */
+
+function renderGuardrails(
+    guardrails,
+    context = "CANDIDATE"
+) {
+
+    const section =
+        document.getElementById(
+            "guardrails-section"
+        );
+
+
+    if (
+        !guardrails
+    ) {
+
+        section.classList.add(
+            "hidden"
+        );
+
+        return;
+    }
+
+
+    section.classList.remove(
+        "hidden"
+    );
+
+
+    const baselineContext =
+        context === "BASELINE";
+
+
+    document.getElementById(
+        "guardrails-title"
+    ).textContent =
+        (
+            baselineContext
+
+            ? "4. Active Baseline Guardrails"
+
+            : "4. Candidate Guardrail Decision"
+        );
+
+
+    const summary =
+        guardrails.summary
+        || {};
+
+
+    const reassociation =
+        guardrails.reassociation
+        || {
+            reassociated_active_ues: 0
+        };
+
+
+    document.getElementById(
+        "guardrail-metrics"
+    ).innerHTML = `
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Verdict
+            </div>
+
+            <div class="metric-number">
+                ${badge(guardrails.verdict)}
+            </div>
+
+        </div>
+
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Served Ratio
+            </div>
+
+            <div class="metric-number">
+                ${displayValue(
+                    summary.candidate_served_ratio_pct
+                )}%
+            </div>
+
+        </div>
+
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Degraded UE
+            </div>
+
+            <div class="metric-number">
+                ${displayValue(
+                    summary.baseline_degraded_ues
+                )}
+                →
+                ${displayValue(
+                    summary.candidate_degraded_ues
+                )}
+            </div>
+
+        </div>
+
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Weighted SINR
+            </div>
+
+            <div class="metric-number">
+                ${displayValue(
+                    summary.candidate_weighted_sinr_db
+                )}
+                dB
+            </div>
+
+        </div>
+
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Max PRB
+            </div>
+
+            <div class="metric-number">
+                ${
+                    summary.max_candidate_prb
+                    ? `${summary.max_candidate_prb.prb_utilization_pct}%`
+                    : "-"
+                }
+            </div>
+
+        </div>
+
+
+        <div class="metric-box">
+
+            <div class="metric-name">
+                Reassociated UE
+            </div>
+
+            <div class="metric-number">
+                ${reassociation.reassociated_active_ues}
+            </div>
+
+        </div>
+    `;
+
+
+    const failed =
+        guardrails.failed_checks
+        || [];
+
+
+    const failedContainer =
+        document.getElementById(
+            "failed-guardrails"
+        );
+
+
+    if (
+        failed.length === 0
+    ) {
+
+        failedContainer.innerHTML =
+            `
+            <div
+                class="pass"
+                style="padding:14px"
+            >
+                All guardrails passed.
+            </div>
+            `;
+    }
+
+    else {
+
+        failedContainer.innerHTML =
+            buildGuardrailTable(
+                failed,
+                baselineContext
+            );
+    }
+
+
+    document.getElementById(
+        "all-guardrails"
+    ).innerHTML =
+        buildGuardrailTable(
+            guardrails.checks
+            || [],
+            baselineContext
+        );
+}
+
+
+function buildGuardrailTable(
+    checks,
+    baselineContext = false
+) {
+
+    return `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Guardrail</th>
+                <th>Status</th>
+                <th>Baseline</th>
+                <th>
+                    ${
+                        baselineContext
+                        ? "Observed Active"
+                        : "Candidate"
+                    }
+                </th>
+                <th>Delta</th>
+                <th>Limit</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            checks.map(
+                check => `
+
+                    <tr>
+
+                        <td>
+                            ${
+                                baselineContext
+                                ? activeGuardrailName(
+                                    check.name
+                                )
+                                : check.name
+                            }
+                        </td>
+
+                        <td>
+                            ${badge(check.status)}
+                        </td>
+
+                        <td>
+                            ${displayValue(
+                                check.baseline
+                            )}
+                        </td>
+
+                        <td>
+                            ${displayValue(
+                                check.candidate
+                            )}
+                        </td>
+
+                        <td
+                            class="${
+                                check.status
+                                === "FAIL"
+                                ? "fail"
+                                : ""
+                            }"
+                        >
+                            ${displayValue(
+                                check.delta
+                            )}
+                        </td>
+
+                        <td>
+                            ${displayValue(
+                                check.limit
+                            )}
+                        </td>
+
+                    </tr>
+                `
+            )
+            .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
+}
+
+
+/* ===================================================== */
+/* REASSOCIATION */
+/* ===================================================== */
+
+function renderReassociation(
+    reassociation
+) {
+
+    const section =
+        document.getElementById(
+            "reassociation-section"
+        );
+
+
+    const container =
+        document.getElementById(
+            "reassociation-table"
+        );
+
+
+    if (
+        !reassociation
+        ||
+        reassociation.changed_sample_count
+        === 0
+    ) {
+
+        section.classList.add(
+            "hidden"
+        );
+
+        return;
+    }
+
+
+    section.classList.remove(
+        "hidden"
+    );
+
+
+    container.innerHTML = `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>UE Sample</th>
+                <th>Active UE</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Band</th>
+                <th>Service</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            reassociation
+                .changes
+                .map(
+                    change => `
+
+                        <tr>
+
+                            <td>
+                                ${change.sample_id}
+                            </td>
+
+                            <td>
+                                ${change.active_ues}
+                            </td>
+
+                            <td>
+                                ${change.baseline_cell_id}
+                            </td>
+
+                            <td>
+                                ${change.candidate_cell_id}
+                            </td>
+
+                            <td>
+                                ${change.baseline_band}
+                                →
+                                ${change.candidate_band}
+                            </td>
+
+                            <td>
+
+                                ${change.baseline_serviceability}
+                                →
+
+                                <span
+                                    class="${
+                                        change.candidate_serviceability
+                                        === "DEGRADED"
+                                        ? "warning"
+                                        : "pass"
+                                    }"
+                                >
+                                    ${change.candidate_serviceability}
+                                </span>
+
+                            </td>
+
+                        </tr>
+                    `
+                )
+                .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
+}
+
+
+/* ===================================================== */
+/* ACTIVE SERVING CELLS */
+/* ===================================================== */
+
+async function loadLiveCells() {
+
+    activeServingCells =
+        await api(
+            "/cells"
+        );
+
+
+    updateCellCountSummary();
+
+
+    renderServingView();
+
+    renderAllServingCells();
+}
+
+
+function updateCellCountSummary() {
+
+    if (
+        !ranConfigData
+    ) {
+
+        return;
+    }
+
+
+    const configured =
+        Object.keys(
+            ranConfigData
+                .active
+                .cells
+        ).length;
+
+
+    const serving =
+        activeServingCells.length;
+
+
+    document.getElementById(
+        "cell-counts"
+    ).textContent =
+        `${configured} / ${serving}`;
+}
+
+
+function renderServingView() {
+
+    if (
+        !ranConfigData
+    ) {
+
+        return;
+    }
+
+
+    const siteId =
+        selectedSite();
+
+
+    const band =
+        selectedBand();
+
+
+    const configured =
+        Object.values(
+            ranConfigData
+                .active
+                .cells
+        )
+        .filter(
+            config => {
+
+                if (
+                    config.site_id
+                    !== siteId
+                ) {
+
+                    return false;
+                }
+
+
+                if (
+                    band !== "ALL"
+                    &&
+                    config.band !== band
+                ) {
+
+                    return false;
+                }
+
+
+                return true;
+            }
+        );
+
+
+    const serving =
+        activeServingCells
+            .filter(
+                cell => {
+
+                    if (
+                        cell.site_id
+                        !== siteId
+                    ) {
+
+                        return false;
+                    }
+
+
+                    if (
+                        band !== "ALL"
+                        &&
+                        cell.band !== band
+                    ) {
+
+                        return false;
+                    }
+
+
+                    return true;
+                }
+            );
+
+
+    document.getElementById(
+        "serving-summary"
+    ).textContent =
+        (
+            `${configured.length} cells are configured in this view; `
+            + `${serving.length} are currently serving active UE.`
+        );
+
+
+    document.getElementById(
+        "serving-table"
+    ).innerHTML =
+        buildServingTable(
+            serving
+        );
+}
+
+
+function renderAllServingCells() {
+
+    document.getElementById(
+        "all-serving-table"
+    ).innerHTML =
+        buildServingTable(
+            activeServingCells
+        );
+}
+
+
+function buildServingTable(
+    cells
+) {
+
+    if (
+        cells.length === 0
+    ) {
+
+        return `
+            <div style="padding:14px">
+                No active serving cells in this view.
+            </div>
+        `;
+    }
+
+
+    return `
+
+        <table>
+
+        <thead>
+
+            <tr>
+
+                <th>Cell</th>
+                <th>Band</th>
+                <th>RSRP</th>
+                <th>SINR</th>
+                <th>PRB</th>
+                <th>Active UE</th>
+                <th>Traffic</th>
+                <th>Status</th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+        ${
+            cells.map(
+                cell => `
+
+                    <tr>
+
+                        <td>
+                            ${cell.cell_id}
+
+                            <br>
+
+                            <span class="muted">
+                                ${cell.site_id}
+                            </span>
+                        </td>
+
+                        <td>
+                            ${cell.band}
+                        </td>
+
+                        <td>
+                            ${cell.rsrp_dbm}
+                            dBm
+                        </td>
+
+                        <td>
+                            ${cell.sinr_db}
+                            dB
+                        </td>
+
+                        <td>
+                            ${cell.prb_utilization}
+                            %
+                        </td>
+
+                        <td>
+                            ${cell.active_users}
+                        </td>
+
+                        <td>
+                            ${cell.traffic_mbps}
+                            Mbps
+                        </td>
+
+                        <td>
+                            ${badge(cell.status)}
+                        </td>
+
+                    </tr>
+                `
+            )
+            .join("")
+        }
+
+        </tbody>
+
+        </table>
+    `;
+}
+
+
+/* ===================================================== */
+/* EVALUATE */
+/* ===================================================== */
+
+async function evaluateCandidate() {
 
     try {
+
+        const payload =
+            buildCandidateRequest();
+
 
         const result =
             await api(
 
-                "/rollout",
+                "/ran-config/evaluate",
 
                 {
-                    method: "POST"
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
                 }
             );
 
@@ -2030,17 +4307,38 @@ async function runGuardedRollout() {
         );
 
 
-        renderRollout(
+        renderConfigChanges(
+            result.candidate_config
+        );
+
+
+        renderImpact(
+            result.validation
+        );
+
+
+        renderGuardrails(
+            result.guardrails,
+            "CANDIDATE"
+        );
+
+
+        renderReassociation(
+            result.reassociation
+        );
+
+
+        renderEvaluationDecision(
             result
         );
 
 
-        await refreshDashboard();
+        await loadEvents();
 
 
         document
             .getElementById(
-                "rollout-result-section"
+                "decision-panel"
             )
             .scrollIntoView({
                 behavior: "smooth",
@@ -2060,522 +4358,957 @@ async function runGuardedRollout() {
 }
 
 
-// =====================================================
-// GUARDED ROLLOUT RESULT
-// =====================================================
+/* ===================================================== */
+/* EVALUATE DECISION */
+/* ===================================================== */
 
-function renderRollout(
+function renderEvaluationDecision(
     result
 ) {
 
-    const section =
+    const panel =
         document.getElementById(
-            "rollout-result-section"
+            "decision-panel"
         );
 
 
     const headline =
         document.getElementById(
-            "rollout-headline"
+            "decision-headline"
         );
 
 
-    section.className =
-        "rollout-main";
+    const summary =
+        document.getElementById(
+            "decision-summary"
+        );
+
+
+    document.getElementById(
+        "workflow"
+    ).classList.add(
+        "hidden"
+    );
 
 
     if (
-        result.status
-        === "ROLLED_BACK"
+        result.decision
+        === "BLOCKED_BASELINE_HEALTH"
     ) {
 
-        section.classList.add(
-            "rollout-main-warning"
-        );
+        panel.className =
+            "decision-panel decision-warning";
+
 
         headline.textContent =
-            "ROLLBACK COMPLETED — FAILED RELEASE REJECTED";
-
+            "DIAGNOSTIC PREVIEW - PROMOTION BLOCKED BY BASELINE HEALTH";
     }
 
     else if (
-        result.status
-        === "DEPLOYED"
+        result.would_be_accepted
     ) {
 
-        section.classList.add(
-            "rollout-main-success"
-        );
+        panel.className =
+            "decision-panel decision-pass";
+
 
         headline.textContent =
-            "ROLLOUT COMPLETED SUCCESSFULLY";
-
+            "CANDIDATE PASSES - ELIGIBLE FOR PROMOTION";
     }
 
     else {
 
-        section.classList.add(
-            "rollout-main-fail"
-        );
+        panel.className =
+            "decision-panel decision-fail";
+
 
         headline.textContent =
-            `ROLLOUT ${result.status}`;
+            "CANDIDATE WOULD BE REJECTED";
     }
 
 
-    const failedCells =
-        result.failed_validation
-        ? result
-            .failed_validation
-            .failed_cells
-        : [];
+    const guardrailSummary =
+        result.guardrails.summary
+        || {};
 
 
-    let validationText = "-";
+    const weather =
+        result.weather
+        || {};
 
 
-    if (
-        result.failed_validation
-        &&
-        result.post_rollback_validation
-    ) {
-
-        validationText =
-            `${result.failed_validation.status}` +
-            " → " +
-            `${result.post_rollback_validation.status}`;
-    }
-
-    else if (
-        result.validation
-    ) {
-
-        validationText =
-            result.validation.status;
-    }
+    const baselineHealth =
+        result.baseline_health
+        || {};
 
 
-    document.getElementById(
-        "rollout-summary"
-    ).innerHTML = `
+    const reassociation =
+        result.reassociation
+        || {
+            reassociated_active_ues: 0
+        };
 
-        <div class="rollout-summary-item">
 
-            <div class="rollout-summary-label">
-                Attempted Release
-            </div>
+    summary.innerHTML = `
 
-            <div class="rollout-summary-value">
-                ${
-                    result.attempted_release
-                    || "-"
-                }
-            </div>
+        <div class="decision-item">
+
+            Decision
+
+            <strong>
+                ${result.decision || "-"}
+            </strong>
 
         </div>
 
 
-        <div class="rollout-summary-item">
+        <div class="decision-item">
 
-            <div class="rollout-summary-label">
-                Active Release
-            </div>
+            Baseline Health
 
-            <div class="rollout-summary-value">
-                ${
-                    result.active_release
-                    || "-"
-                }
-            </div>
+            <strong>
+                ${badge(baselineHealth.status || "UNKNOWN")}
+            </strong>
 
         </div>
 
 
-        <div class="rollout-summary-item">
+        <div class="decision-item">
 
-            <div class="rollout-summary-label">
-                RAN Validation
-            </div>
+            Candidate Guardrails
 
-            <div class="rollout-summary-value">
-                ${validationText}
-            </div>
+            <strong>
+                ${badge(result.guardrails.verdict)}
+            </strong>
 
         </div>
 
 
-        <div class="rollout-summary-item">
+        <div class="decision-item">
 
-            <div class="rollout-summary-label">
-                Failed Cells
-            </div>
+            Candidate Failed Checks
 
-            <div class="rollout-summary-value">
-                ${
-                    failedCells.length
-                    > 0
-                    ? failedCells.join(", ")
-                    : "None"
-                }
-            </div>
+            <strong>
+                ${result.guardrails.failed_check_count}
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Candidate
+
+            <strong>
+                ${result.candidate_version}
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Active
+
+            <strong>
+                ${result.active_version}
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Served UE
+
+            <strong>
+                ${displayValue(
+                    guardrailSummary.candidate_served_ratio_pct
+                )}%
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Reassociated UE
+
+            <strong>
+                ${reassociation.reassociated_active_ues}
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Weather Snapshot
+
+            <strong>
+                ${weather.timestamp || "-"}
+            </strong>
+
+        </div>
+
+
+        <div class="decision-item">
+
+            Active changed?
+
+            <strong>
+                NO - PREVIEW ONLY
+            </strong>
 
         </div>
     `;
-
-
-    renderWorkflow(
-        result
-    );
-
-
-    renderIncidentSnapshot(
-        result
-    );
-
-
-    renderRecovery(
-        result
-    );
 }
 
 
-// =====================================================
-// WORKFLOW
-// =====================================================
+/* ===================================================== */
+/* GUARDED APPLY */
+/* ===================================================== */
 
-function renderWorkflow(
-    result
-) {
+async function guardedApply() {
 
-    const stepsElement =
-        document.getElementById(
-            "rollout-steps"
-        );
+    try {
+
+        const payload =
+            buildCandidateRequest();
 
 
-    stepsElement.innerHTML =
-        "";
+        const result =
+            await api(
 
+                "/ran-config/guarded-apply",
 
-    if (
-        !result.steps
-        ||
-        result.steps.length === 0
-    ) {
+                {
+                    method: "POST",
 
-        return;
-    }
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
 
-
-    result.steps.forEach(
-        (
-            step,
-            index
-        ) => {
-
-            const row =
-                document.createElement(
-                    "div"
-                );
-
-
-            row.className =
-                "step";
-
-
-            row.innerHTML = `
-
-                <div class="step-number">
-                    ${index + 1}
-                </div>
-
-                <div>
-                    ${step.step}
-                </div>
-
-                <div>
-                    ${
-                        statusBadge(
-                            step.status
+                    body:
+                        JSON.stringify(
+                            payload
                         )
-                    }
-                </div>
-
-                <div
-                    class="small step-detail"
-                >
-                    ${
-                        step.detail
-                        || ""
-                    }
-                </div>
-            `;
+                }
+            );
 
 
-            stepsElement
-                .appendChild(
-                    row
-                );
-        }
-    );
-}
-
-
-// =====================================================
-// FAILED SNAPSHOT
-// =====================================================
-
-function renderIncidentSnapshot(
-    result
-) {
-
-    const panel =
-        document.getElementById(
-            "incident-panel"
+        showRaw(
+            result
         );
 
-
-    const content =
-        document.getElementById(
-            "incident-content"
-        );
-
-
-    if (
-        !result.failed_validation
-    ) {
-
-        panel.classList.add(
-            "hidden"
-        );
-
-        return;
-    }
-
-
-    panel.classList.remove(
-        "hidden"
-    );
-
-
-    let html = `
-
-        <p>
-
-            Release
-
-            <b>
-                ${result.attempted_release}
-            </b>
-
-            was technically activated,
-            but post-change RAN validation
-            detected unacceptable KPI
-            degradation.
-
-        </p>
-    `;
-
-
-    for (
-        const cell
-        of result
-            .failed_validation
-            .cells
-    ) {
 
         if (
-            !result
-                .failed_validation
-                .failed_cells
-                .includes(
-                    cell.cell_id
-                )
+            result.status
+            === "BLOCKED"
         ) {
 
-            continue;
+            document.getElementById(
+                "changes-section"
+            ).classList.add(
+                "hidden"
+            );
+
+
+            document.getElementById(
+                "impact-section"
+            ).classList.add(
+                "hidden"
+            );
+
+
+            document.getElementById(
+                "reassociation-section"
+            ).classList.add(
+                "hidden"
+            );
+
+
+            if (
+                result.baseline_health
+                &&
+                result.baseline_health.guardrails
+            ) {
+
+                renderGuardrails(
+                    result.baseline_health.guardrails,
+                    "BASELINE"
+                );
+            }
+
+            else {
+
+                document.getElementById(
+                    "guardrails-section"
+                ).classList.add(
+                    "hidden"
+                );
+            }
+        }
+
+        else {
+
+            if (
+                result.candidate_config
+            ) {
+
+                renderConfigChanges(
+                    result.candidate_config
+                );
+            }
+
+
+            if (
+                result.status
+                === "APPLIED"
+            ) {
+
+                renderImpact(
+                    result.validation
+                );
+            }
+
+            else if (
+                result.status
+                === "ROLLED_BACK"
+            ) {
+
+                renderImpact(
+                    result.failed_validation
+                );
+            }
+
+
+            renderGuardrails(
+                result.guardrails,
+                "CANDIDATE"
+            );
+
+
+            renderReassociation(
+                result.reassociation
+            );
         }
 
 
-        html += `
-
-        <div
-            class="cell-card"
-            style="margin-top:15px"
-        >
-
-        <div class="cell-header">
-
-            <h3>
-                ${cell.cell_id}
-            </h3>
-
-            <span class="fail-badge">
-                FAILED
-            </span>
-
-        </div>
+        renderApplyDecision(
+            result
+        );
 
 
-        <table class="kpi-table">
+        if (
+            result.status
+            === "BLOCKED"
+        ) {
 
-        <thead>
+            await refreshOperationalContext(
+                true
+            );
+        }
 
-        <tr>
+        else {
 
-            <th>KPI</th>
-            <th>Baseline</th>
-            <th>Failed State</th>
-            <th>Delta</th>
-            <th>Check</th>
-
-        </tr>
-
-        </thead>
-
-
-        <tbody>
+            await refreshAfterOperation();
+        }
 
 
-        ${kpiRow(
-            "PRB",
-            `${cell.baseline.prb_utilization}%`,
-            `${cell.current.prb_utilization}%`,
-            signed(
-                cell.delta.prb,
-                " pp"
-            ),
-            cell.checks.prb
-        )}
+        document
+            .getElementById(
+                "decision-panel"
+            )
+            .scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
 
-
-        ${kpiRow(
-            "SINR",
-            `${cell.baseline.sinr_db} dB`,
-            `${cell.current.sinr_db} dB`,
-            signed(
-                cell.delta.sinr,
-                " dB"
-            ),
-            cell.checks.sinr
-        )}
-
-
-        ${kpiRow(
-            "RSRP",
-            `${cell.baseline.rsrp_dbm} dBm`,
-            `${cell.current.rsrp_dbm} dBm`,
-            signed(
-                cell.delta.rsrp,
-                " dB"
-            ),
-            cell.checks.rsrp
-        )}
-
-
-        ${kpiRow(
-            "Users",
-            cell.baseline.active_users,
-            cell.current.active_users,
-            signed(
-                cell.delta.users
-            ),
-            cell.checks.users
-        )}
-
-
-        </tbody>
-
-        </table>
-
-        </div>
-        `;
     }
 
+    catch (
+        error
+    ) {
 
-    content.innerHTML =
-        html;
+        showError(
+            error
+        );
+    }
 }
 
 
-// =====================================================
-// AUTOMATIC RECOVERY
-// =====================================================
+/* ===================================================== */
+/* APPLY DECISION */
+/* ===================================================== */
 
-function renderRecovery(
+function renderApplyDecision(
     result
 ) {
 
     const panel =
         document.getElementById(
-            "recovery-panel"
+            "decision-panel"
         );
 
 
-    const content =
+    const headline =
         document.getElementById(
-            "recovery-content"
+            "decision-headline"
         );
+
+
+    const summary =
+        document.getElementById(
+            "decision-summary"
+        );
+
+
+    const workflow =
+        document.getElementById(
+            "workflow"
+        );
+
+
+    workflow.classList.remove(
+        "hidden"
+    );
 
 
     if (
         result.status
-        !== "ROLLED_BACK"
+        === "APPLIED"
     ) {
 
-        panel.classList.add(
-            "hidden"
-        );
+        panel.className =
+            "decision-panel decision-pass";
 
-        return;
+
+        headline.textContent =
+            "CANDIDATE PROMOTED";
+
+
+        summary.innerHTML = `
+
+            <div class="decision-item">
+
+                Result
+
+                <strong>
+                    ${badge("APPLIED")}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Previous
+
+                <strong>
+                    ${result.previous_version}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Active
+
+                <strong>
+                    ${result.active_version}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Baseline Health
+
+                <strong>
+                    ${
+                        badge(
+                            result.baseline_health
+                            ? result.baseline_health.status
+                            : "UNKNOWN"
+                        )
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Candidate Guardrails
+
+                <strong>
+                    ${badge(result.guardrails.verdict)}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Decision
+
+                <strong>
+                    PROMOTE
+                </strong>
+
+            </div>
+        `;
+    }
+
+    else if (
+        result.status
+        === "ROLLED_BACK"
+    ) {
+
+        panel.className =
+            "decision-panel decision-warning";
+
+
+        headline.textContent =
+            "CANDIDATE REJECTED - ROLLBACK COMPLETED";
+
+
+        summary.innerHTML = `
+
+            <div class="decision-item">
+
+                Candidate
+
+                <strong>
+                    ${result.candidate_version}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Active Known-Good
+
+                <strong>
+                    ${result.active_version}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Failed Checks
+
+                <strong>
+                    ${result.guardrails.failed_check_count}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Reassociated UE
+
+                <strong>
+                    ${result.reassociation.reassociated_active_ues}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Rollback Verify
+
+                <strong>
+                    ${
+                        badge(
+                            result
+                                .rollback_verification
+                                .verdict
+                        )
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Decision
+
+                <strong>
+                    REJECT + RESTORE
+                </strong>
+
+            </div>
+        `;
+    }
+
+    else if (
+        result.status
+        === "BLOCKED"
+    ) {
+
+        panel.className =
+            "decision-panel decision-warning";
+
+
+        const reason =
+            result.reason
+            || "PRECHECK_FAILED";
+
+
+        if (
+            reason
+            === "ACTIVE_RAN_OUTSIDE_SAFE_ENVELOPE"
+        ) {
+
+            headline.textContent =
+                "CHANGE BLOCKED - ACTIVE RAN OUTSIDE SAFE ENVELOPE";
+        }
+
+        else if (
+            reason
+            === "EXTERNAL_PRECHECK_FAILED"
+        ) {
+
+            headline.textContent =
+                "CHANGE BLOCKED - EXTERNAL PRECHECK FAILED";
+        }
+
+        else {
+
+            headline.textContent =
+                "CHANGE BLOCKED";
+        }
+
+
+        summary.innerHTML = `
+
+            <div class="decision-item">
+
+                Result
+
+                <strong>
+                    ${badge("BLOCKED")}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Reason
+
+                <strong>
+                    ${reason}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Active Config
+
+                <strong>
+                    ${result.active_version || "-"}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Baseline Health
+
+                <strong>
+                    ${
+                        result.baseline_health
+                        ? badge(
+                            result.baseline_health.status
+                        )
+                        : "-"
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Candidate Evaluated?
+
+                <strong>
+                    ${
+                        result.candidate_evaluated
+                        ? "YES"
+                        : "NO"
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Configuration Changed?
+
+                <strong>
+                    ${
+                        result.configuration_changed
+                        ? "YES"
+                        : "NO"
+                    }
+                </strong>
+
+            </div>
+        `;
+    }
+
+    else {
+
+        panel.className =
+            "decision-panel decision-fail";
+
+
+        headline.textContent =
+            `RAN CHANGE ${result.status}`;
+
+
+        summary.innerHTML =
+            `
+            <div class="decision-item">
+                Active configuration remains
+                <strong>
+                    ${result.active_version || "-"}
+                </strong>
+            </div>
+            `;
     }
 
 
-    panel.classList.remove(
-        "hidden"
-    );
+    workflow.innerHTML =
+        "";
 
 
-    content.innerHTML = `
+    if (
+        Array.isArray(
+            result.steps
+        )
+    ) {
 
-        Attempted release:
+        result.steps.forEach(
+            (
+                step,
+                index
+            ) => {
 
-        <b>
-            ${result.attempted_release}
-        </b>
+                workflow.innerHTML += `
 
-        &nbsp;&nbsp; | &nbsp;&nbsp;
+                    <div class="workflow-row">
 
-        Active release:
+                        <div>
+                            ${index + 1}
+                        </div>
 
-        <b>
-            ${result.active_release}
-        </b>
+                        <div>
+                            ${step.step}
+                        </div>
 
-        &nbsp;&nbsp; | &nbsp;&nbsp;
+                        <div>
+                            ${badge(step.status)}
+                        </div>
 
-        Post-rollback validation:
-
-        ${
-            statusBadge(
-                result
-                    .post_rollback_validation
-                    .status
-            )
-        }
-
-        <br><br>
-
-        Failed RAN state was rejected
-        and the known-good synthetic
-        baseline was restored.
-    `;
+                    </div>
+                `;
+            }
+        );
+    }
 }
 
 
-// =====================================================
-// EVENTS
-// =====================================================
+/* ===================================================== */
+/* RESTORE BASELINE */
+/* ===================================================== */
+
+async function restoreBaseline() {
+
+    try {
+
+        const result =
+            await api(
+
+                "/ran-config/restore-baseline",
+
+                {
+                    method: "POST"
+                }
+            );
+
+
+        showRaw(
+            result
+        );
+
+
+        const panel =
+            document.getElementById(
+                "decision-panel"
+            );
+
+
+        const baselineHealth =
+            result.baseline_health
+            || {};
+
+
+        if (
+            baselineHealth.status
+            === "FAIL"
+        ) {
+
+            panel.className =
+                "decision-panel decision-warning";
+
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                "FACTORY CONFIG RESTORED - ACTIVE RAN STILL OUTSIDE SAFE ENVELOPE";
+        }
+
+        else {
+
+            panel.className =
+                "decision-panel decision-pass";
+
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                "FACTORY CONFIG RESTORED - ACTIVE RAN HEALTHY";
+        }
+
+
+        document.getElementById(
+            "decision-summary"
+        ).innerHTML = `
+
+            <div class="decision-item">
+
+                Previous
+
+                <strong>
+                    ${result.previous_version || "-"}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Active
+
+                <strong>
+                    ${result.active_version || "-"}
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Baseline Health
+
+                <strong>
+                    ${
+                        badge(
+                            baselineHealth.status
+                            || "UNKNOWN"
+                        )
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Served UE
+
+                <strong>
+                    ${
+                        result.service
+                        ? `${result.service.served_ratio_pct}%`
+                        : "-"
+                    }
+                </strong>
+
+            </div>
+
+
+            <div class="decision-item">
+
+                Interpretation
+
+                <strong>
+                    ${
+                        baselineHealth.status
+                        === "FAIL"
+
+                        ? "KNOWN-GOOD CONFIG != CURRENTLY HEALTHY RAN"
+
+                        : "RESTORED STATE INSIDE SAFE ENVELOPE"
+                    }
+                </strong>
+
+            </div>
+        `;
+
+
+        document.getElementById(
+            "workflow"
+        ).classList.add(
+            "hidden"
+        );
+
+
+        hideCandidateSections();
+
+
+        await refreshAfterOperation();
+
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+
+    }
+
+    catch (
+        error
+    ) {
+
+        showError(
+            error
+        );
+    }
+}
+
+
+/* ===================================================== */
+/* EVENTS */
+/* ===================================================== */
 
 async function loadEvents() {
 
@@ -2585,7 +5318,7 @@ async function loadEvents() {
         );
 
 
-    const timeline =
+    const container =
         document.getElementById(
             "timeline"
         );
@@ -2595,10 +5328,10 @@ async function loadEvents() {
         events.length === 0
     ) {
 
-        timeline.innerHTML =
+        container.innerHTML =
             `
-            <div class="small">
-                No events recorded yet.
+            <div class="muted">
+                No events recorded.
             </div>
             `;
 
@@ -2606,17 +5339,22 @@ async function loadEvents() {
     }
 
 
-    timeline.innerHTML =
+    const newest =
+        [...events]
+            .reverse()
+            .slice(
+                0,
+                8
+            );
+
+
+    container.innerHTML =
         "";
-
-
-    const newestFirst =
-        [...events].reverse();
 
 
     for (
         const event
-        of newestFirst
+        of newest
     ) {
 
         const row =
@@ -2626,78 +5364,124 @@ async function loadEvents() {
 
 
         row.className =
-            "timeline-event";
+            "event";
+
+
+        const time =
+            new Date(
+                event.timestamp
+            )
+            .toLocaleTimeString(
+                [],
+                {
+                    hour12: false
+                }
+            );
 
 
         row.innerHTML = `
 
-            <div class="timeline-time">
-
-                ${
-                    formatTimestamp(
-                        event.timestamp
-                    )
-                }
-
+            <div class="event-time">
+                ${time}
             </div>
-
-
-            <div class="timeline-type">
-
-                ${event.type}
-
-            </div>
-
-
-            <div class="timeline-status">
-
-                ${
-                    statusBadge(
-                        event.status
-                    )
-                }
-
-            </div>
-
 
             <div>
+                <b>
+                    ${event.type}
+                </b>
+            </div>
 
+            <div class="event-status">
+                ${badge(event.status)}
+            </div>
+
+            <div class="event-message">
                 ${event.message}
-
             </div>
         `;
 
 
-        timeline.appendChild(
+        container.appendChild(
             row
         );
     }
 }
 
 
-// =====================================================
-// RAW OUTPUT
-// =====================================================
+/* ===================================================== */
+/* UI STATE */
+/* ===================================================== */
 
-function showRaw(
-    result
-) {
+function hideCandidateSections() {
 
     document.getElementById(
-        "raw-output"
-    ).textContent =
+        "changes-section"
+    ).classList.add(
+        "hidden"
+    );
 
-        JSON.stringify(
-            result,
-            null,
-            2
-        );
+
+    document.getElementById(
+        "impact-section"
+    ).classList.add(
+        "hidden"
+    );
+
+
+    document.getElementById(
+        "guardrails-section"
+    ).classList.add(
+        "hidden"
+    );
+
+
+    document.getElementById(
+        "reassociation-section"
+    ).classList.add(
+        "hidden"
+    );
 }
 
+
+/* ===================================================== */
+/* ERROR */
+/* ===================================================== */
 
 function showError(
     error
 ) {
+
+    const panel =
+        document.getElementById(
+            "decision-panel"
+        );
+
+
+    panel.className =
+        "decision-panel decision-fail";
+
+
+    document.getElementById(
+        "decision-headline"
+    ).textContent =
+        "REQUEST FAILED";
+
+
+    document.getElementById(
+        "decision-summary"
+    ).innerHTML =
+        `
+        <div class="decision-item">
+
+            Error
+
+            <strong>
+                ${error.toString()}
+            </strong>
+
+        </div>
+        `;
+
 
     document.getElementById(
         "raw-output"
@@ -2706,24 +5490,89 @@ function showError(
 }
 
 
-// =====================================================
-// REFRESH
-// =====================================================
+/* ===================================================== */
+/* REFRESH */
+/* ===================================================== */
 
-async function refreshDashboard() {
+async function refreshOperationalContext(
+    includeEvents = false
+) {
+
+    if (
+        contextRefreshInFlight
+    ) {
+
+        return;
+    }
+
+
+    contextRefreshInFlight =
+        true;
+
 
     try {
 
+        // /status re-observes the active RAN under one
+        // authoritative backend weather snapshot.
+        await loadStatus();
+
+
+        // Fetch cells only after /status has refreshed the
+        // active snapshot. This keeps the serving view aligned
+        // with the weather / baseline context just displayed.
+        await loadLiveCells();
+
+
+        if (
+            includeEvents
+        ) {
+
+            await loadEvents();
+        }
+    }
+
+    finally {
+
+        contextRefreshInFlight =
+            false;
+    }
+}
+
+
+async function refreshAfterOperation() {
+
+    // Refresh status first so all following active views use the
+    // same newly observed controller state.
+    await loadStatus();
+
+
+    await Promise.all([
+
+        loadRanConfig(),
+
+        loadLiveCells(),
+
+        loadEvents()
+    ]);
+}
+
+
+async function loadEverything() {
+
+    try {
+
+        // Status is intentionally first, not parallel. It is the
+        // authoritative active-RAN + weather observation.
+        await loadStatus();
+
+
         await Promise.all([
 
-            loadStatus(),
+            loadRanConfig(),
 
-            loadSafety(),
-
-            loadValidation(),
+            loadLiveCells(),
 
             loadEvents()
-
         ]);
 
     }
@@ -2735,28 +5584,29 @@ async function refreshDashboard() {
         showError(
             error
         );
-
-
-        const banner =
-            document.getElementById(
-                "system-banner"
-            );
-
-
-        banner.className =
-            "banner banner-fail";
-
-
-        banner.textContent =
-            "APPLICATION API UNAVAILABLE";
     }
 }
 
 
-refreshDashboard();
+loadEverything();
+
+
+setInterval(
+    () => {
+
+        refreshOperationalContext(
+            false
+        ).catch(
+            showError
+        );
+    },
+
+    LIVE_CONTEXT_REFRESH_MS
+);
 
 
 </script>
+
 
 </body>
 

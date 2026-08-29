@@ -1,42 +1,96 @@
+"""
+FastAPI boundary for the RAN Automation Delivery &
+Resilience Lab.
+
+Architecture:
+
+HTTP / dashboard
+        â†“
+RanAutomationController
+        â†“
+RAN configuration engine
+        â†“
+RF model
+        â†“
+traffic / UE association
+        â†“
+guardrails
+        â†“
+BLOCK / PROMOTE / ROLLBACK
+
+The API deliberately does not calculate RF KPIs itself.
+
+The RAN sites and cells are synthetic learning-lab
+infrastructure anchored to real geography around
+Jesenice u Prahy. They are not claimed to represent
+real operator BTS locations.
+"""
+
 import os
-from copy import deepcopy
-from datetime import datetime, timezone
+
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from app.dashboard import DASHBOARD_HTML
 
+from app.jesenice_scenario import (
+    SCENARIO_METADATA,
+)
 
-app = FastAPI()
+from app.ran_controller import (
+    RanAutomationController,
+)
+
+from app.ran_engine import (
+    ALLOWED_BANDWIDTHS_MHZ,
+    MAX_ELECTRICAL_TILT_DEG,
+    MAX_TX_POWER_DBM,
+    MIN_ELECTRICAL_TILT_DEG,
+    MIN_TX_POWER_DBM,
+    build_baseline_sites,
+    build_candidate_sites,
+    build_configuration_inventory,
+    compare_cell_kpis,
+)
+
+from app.ran_guardrails import (
+    evaluate_ran_guardrails,
+)
 
 
-# ---------------------------------------------------------
-# CONFIGURATION
-# ---------------------------------------------------------
+# =========================================================
+# FASTAPI APPLICATION
+# =========================================================
+
+app = FastAPI(
+
+    title=
+        "RAN Automation Delivery & Resilience Lab",
+
+    version=
+        "2.0"
+)
+
+
+# =========================================================
+# APPLICATION CONFIGURATION
+# =========================================================
 
 ENVIRONMENT_NAME = os.getenv(
     "ENVIRONMENT_NAME",
     "ENV-LOCAL"
 )
 
-PRB_THRESHOLD = int(
-    os.getenv("PRB_THRESHOLD", "20")
+
+APPLICATION_RELEASE = os.getenv(
+    "APPLICATION_RELEASE",
+    "APP-v2.0"
 )
 
-SINR_THRESHOLD = int(
-    os.getenv("SINR_THRESHOLD", "5")
-)
-
-RSRP_THRESHOLD = int(
-    os.getenv("RSRP_THRESHOLD", "15")
-)
-
-USER_THRESHOLD = int(
-    os.getenv("USER_THRESHOLD", "40")
-)
 
 RAN_ADAPTER_URL = os.getenv(
     "RAN_ADAPTER_URL",
@@ -44,121 +98,1143 @@ RAN_ADAPTER_URL = os.getenv(
 )
 
 
-# ---------------------------------------------------------
-# SYNTHETIC RAN ENVIRONMENT
-# ---------------------------------------------------------
+# =========================================================
+# CONTROLLER
+# =========================================================
+#
+# Important:
+#
+# This controller is intentionally in-memory.
+#
+# One application process therefore owns one controller
+# state.
+#
+# If this application were scaled to multiple active
+# replicas, configuration state would need to move to
+# an external durable / coordinated state store.
+# =========================================================
 
-environment = {
-    "environment_id": ENVIRONMENT_NAME,
-    "release": "v1.0.0",
-    "rollout_state": "STABLE",
-
-    "cells": [
-        {
-            "cell_id": "CELL-001",
-            "technology": "5G",
-            "prb_utilization": 54,
-            "sinr_db": 18,
-            "rsrp_dbm": -82,
-            "active_users": 82,
-            "status": "ACTIVE"
-        },
-        {
-            "cell_id": "CELL-002",
-            "technology": "5G",
-            "prb_utilization": 68,
-            "sinr_db": 8,
-            "rsrp_dbm": -94,
-            "active_users": 103,
-            "status": "ACTIVE"
-        },
-        {
-            "cell_id": "CELL-003",
-            "technology": "4G",
-            "prb_utilization": 45,
-            "sinr_db": 25,
-            "rsrp_dbm": -78,
-            "active_users": 17,
-            "status": "ACTIVE"
-        }
-    ],
-
-    "alarms": [
-        {
-            "alarm_id": "ALARM-001",
-            "cell_id": "CELL-002",
-            "severity": "MAJOR",
-            "type": "LOW_SINR",
-            "active": True
-        }
-    ]
-}
-
-
-# Baseline is the known-good RAN state.
-baseline_cells = deepcopy(
-    environment["cells"]
+controller = (
+    RanAutomationController()
 )
 
 
-# Operational event timeline.
-event_log = []
+# =========================================================
+# FACTORY CONFIGURATION INVENTORY
+# =========================================================
+
+FACTORY_CONFIGURATION = (
+    build_configuration_inventory(
+
+        build_baseline_sites()
+    )
+)
 
 
-# ---------------------------------------------------------
-# EVENT LOG
-# ---------------------------------------------------------
+# =========================================================
+# API REQUEST MODELS
+# =========================================================
 
-def add_event(
-    event_type,
-    status,
-    message
+class CellConfigUpdate(BaseModel):
+
+    tx_power_dbm: float | None = Field(
+
+        default=None,
+
+        ge=MIN_TX_POWER_DBM,
+
+        le=MAX_TX_POWER_DBM
+    )
+
+
+    bandwidth_mhz: int | None = Field(
+
+        default=None,
+
+        ge=5,
+
+        le=100
+    )
+
+
+class AntennaConfigUpdate(BaseModel):
+
+    electrical_tilt_deg: float | None = Field(
+
+        default=None,
+
+        ge=MIN_ELECTRICAL_TILT_DEG,
+
+        le=MAX_ELECTRICAL_TILT_DEG
+    )
+
+
+class CandidateConfigRequest(BaseModel):
+
+    cells: dict[
+        str,
+        CellConfigUpdate
+    ] = Field(
+        default_factory=dict
+    )
+
+
+    antennas: dict[
+        str,
+        AntennaConfigUpdate
+    ] = Field(
+        default_factory=dict
+    )
+
+
+# =========================================================
+# REQUEST -> ENGINE UPDATE FORMAT
+# =========================================================
+
+def request_to_updates(
+    request: CandidateConfigRequest
 ):
-    event_log.append({
-        "timestamp":
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
 
-        "type":
-            event_type,
+    cell_updates = {
 
-        "status":
-            status,
+        cell_id:
+            update.model_dump(
+                exclude_none=True
+            )
 
-        "message":
-            message
+        for (
+            cell_id,
+            update
+        ) in request.cells.items()
+    }
+
+
+    antenna_updates = {
+
+        antenna_id:
+            update.model_dump(
+                exclude_none=True
+            )
+
+        for (
+            antenna_id,
+            update
+        ) in request.antennas.items()
+    }
+
+
+    return (
+        cell_updates,
+        antenna_updates
+    )
+
+
+# =========================================================
+# DASHBOARD CONFIGURATION FORMAT
+# =========================================================
+#
+# dashboard.py was originally written against:
+#
+# {
+#     "version": ...,
+#     "cells": {
+#         CELL-ID: {...}
+#     },
+#     "antennas": {
+#         ANT-ID: {...}
+#     }
+# }
+#
+# ran_engine.py internally uses normalized inventory lists.
+#
+# This adapter preserves the API boundary while keeping
+# the new engine internally cleaner.
+# =========================================================
+
+def inventory_to_dashboard_config(
+    inventory,
+    version
+):
+
+    cells = {}
+
+
+    for cell in inventory[
+        "cells"
+    ]:
+
+        cells[
+            cell[
+                "cell_id"
+            ]
+        ] = {
+
+            "technology":
+                cell[
+                    "technology"
+                ],
+
+            "band":
+                cell[
+                    "band"
+                ],
+
+            "antenna_group":
+                cell[
+                    "antenna_id"
+                ],
+
+            "site_id":
+                cell[
+                    "site_id"
+                ],
+
+            "sector_id":
+                cell[
+                    "sector_id"
+                ],
+
+            "tx_power_dbm":
+                cell[
+                    "tx_power_dbm"
+                ],
+
+            "bandwidth_mhz":
+                cell[
+                    "bandwidth_mhz"
+                ],
+
+            "carrier_frequency_mhz":
+                cell[
+                    "frequency_mhz"
+                ],
+
+            "enabled":
+                cell[
+                    "enabled"
+                ]
+        }
+
+
+    antennas = {}
+
+
+    for antenna in inventory[
+        "antennas"
+    ]:
+
+        antennas[
+            antenna[
+                "antenna_id"
+            ]
+        ] = {
+
+            "site_id":
+                antenna[
+                    "site_id"
+                ],
+
+            "sector_id":
+                antenna[
+                    "sector_id"
+                ],
+
+            "profile":
+                antenna[
+                    "profile"
+                ],
+
+            "azimuth_deg":
+                antenna[
+                    "azimuth_deg"
+                ],
+
+            "mechanical_tilt_deg":
+                antenna[
+                    "mechanical_tilt_deg"
+                ],
+
+            "electrical_tilt_deg":
+                antenna[
+                    "electrical_tilt_deg"
+                ]
+        }
+
+
+    return {
+
+        "version":
+            version,
+
+        "cells":
+            cells,
+
+        "antennas":
+            antennas
+    }
+
+
+# =========================================================
+# ACTIVE DASHBOARD CONFIGURATION
+# =========================================================
+
+def get_active_dashboard_config():
+
+    state = (
+        controller.get_active_state()
+    )
+
+
+    return (
+        inventory_to_dashboard_config(
+
+            state[
+                "configuration"
+            ],
+
+            state[
+                "active_version"
+            ]
+        )
+    )
+
+
+# =========================================================
+# FACTORY DASHBOARD CONFIGURATION
+# =========================================================
+
+def get_factory_dashboard_config():
+
+    return (
+        inventory_to_dashboard_config(
+
+            FACTORY_CONFIGURATION,
+
+            "CONFIG-1.0"
+        )
+    )
+
+
+# =========================================================
+# TOPOLOGY VIEW
+# =========================================================
+
+def build_topology_view():
+
+    antennas = {}
+
+
+    cells_by_antenna = {}
+
+
+    for cell in FACTORY_CONFIGURATION[
+        "cells"
+    ]:
+
+        antenna_id = (
+            cell[
+                "antenna_id"
+            ]
+        )
+
+
+        cells_by_antenna.setdefault(
+            antenna_id,
+            []
+        ).append(
+            cell[
+                "cell_id"
+            ]
+        )
+
+
+    for antenna in FACTORY_CONFIGURATION[
+        "antennas"
+    ]:
+
+        antenna_id = (
+            antenna[
+                "antenna_id"
+            ]
+        )
+
+
+        antennas[
+            antenna_id
+        ] = {
+
+            "site_id":
+                antenna[
+                    "site_id"
+                ],
+
+            "sector":
+                antenna[
+                    "sector_id"
+                ],
+
+            "profile":
+                antenna[
+                    "profile"
+                ],
+
+            "azimuth_deg":
+                antenna[
+                    "azimuth_deg"
+                ],
+
+            "cells":
+                sorted(
+
+                    cells_by_antenna.get(
+                        antenna_id,
+                        []
+                    )
+                )
+        }
+
+
+    sites = sorted({
+
+        cell[
+            "site_id"
+        ]
+
+        for cell
+        in FACTORY_CONFIGURATION[
+            "cells"
+        ]
     })
 
-    # Keep only the newest 50 events.
-    if len(event_log) > 50:
-        del event_log[:-50]
+
+    return {
+
+        # Compatibility with the previous single-site
+        # dashboard field.
+        "site_id":
+            SCENARIO_METADATA[
+                "scenario_id"
+            ],
+
+        "scenario_id":
+            SCENARIO_METADATA[
+                "scenario_id"
+            ],
+
+        "scenario_name":
+            SCENARIO_METADATA[
+                "name"
+            ],
+
+        "real_bts_locations":
+            SCENARIO_METADATA[
+                "real_bts_locations"
+            ],
+
+        "sites":
+            sites,
+
+        "antennas":
+            antennas
+    }
 
 
-# ---------------------------------------------------------
-# PRECHECK
-# ---------------------------------------------------------
+# =========================================================
+# NORMALIZED KPI -> LEGACY DASHBOARD KPI
+# =========================================================
+
+def normalized_cell_to_dashboard(
+    cell
+):
+
+    degraded_users = int(
+
+        cell.get(
+            "serviceability_ue_mix",
+            {}
+        ).get(
+            "DEGRADED",
+            0
+        )
+    )
+
+
+    return {
+
+        "cell_id":
+            cell[
+                "cell_id"
+            ],
+
+        "site_id":
+            cell[
+                "site_id"
+            ],
+
+        "sector_id":
+            cell[
+                "sector_id"
+            ],
+
+        "technology":
+            cell[
+                "technology"
+            ],
+
+        "band":
+            cell[
+                "band"
+            ],
+
+        "bandwidth_mhz":
+            cell[
+                "bandwidth_mhz"
+            ],
+
+        # Compatibility names used by the existing
+        # dashboard.
+        "prb_utilization":
+            cell[
+                "prb_utilization_pct"
+            ],
+
+        "sinr_db":
+            cell[
+                "sinr_db"
+            ],
+
+        "rsrp_dbm":
+            cell[
+                "rsrp_dbm"
+            ],
+
+        "active_users":
+            cell[
+                "active_users"
+            ],
+
+        "status":
+            (
+                "DEGRADED"
+
+                if degraded_users > 0
+
+                else "ACTIVE"
+            ),
+
+        # New richer fields.
+        "traffic_mbps":
+            cell[
+                "traffic_mbps"
+            ],
+
+        "estimated_capacity_mbps":
+            cell[
+                "estimated_capacity_mbps"
+            ],
+
+        "serviceability_ue_mix":
+            cell[
+                "serviceability_ue_mix"
+            ]
+    }
+
+
+def normalized_cells_to_dashboard(
+    cells
+):
+
+    return [
+
+        normalized_cell_to_dashboard(
+            cells[
+                cell_id
+            ]
+        )
+
+        for cell_id
+        in sorted(
+            cells
+        )
+    ]
+
+
+# =========================================================
+# FAILED-CELL EXTRACTION
+# =========================================================
+
+def extract_failed_cells(
+    guardrails
+):
+
+    failed_cells = set()
+
+
+    for check in guardrails[
+        "failed_checks"
+    ]:
+
+        for field_name in (
+            "baseline",
+            "candidate"
+        ):
+
+            value = check.get(
+                field_name
+            )
+
+
+            if (
+                isinstance(
+                    value,
+                    str
+                )
+
+                and
+
+                value.startswith(
+                    "CELL-"
+                )
+            ):
+
+                failed_cells.add(
+                    value
+                )
+
+
+            if isinstance(
+                value,
+                dict
+            ):
+
+                cell_id = value.get(
+                    "cell_id"
+                )
+
+
+                if (
+                    isinstance(
+                        cell_id,
+                        str
+                    )
+
+                    and
+
+                    cell_id.startswith(
+                        "CELL-"
+                    )
+                ):
+
+                    failed_cells.add(
+                        cell_id
+                    )
+
+
+    return sorted(
+        failed_cells
+    )
+
+
+# =========================================================
+# LEGACY PER-CELL VALIDATION VIEW
+# =========================================================
+#
+# The authoritative decision is guardrails["verdict"].
+#
+# This per-cell structure exists so the existing dashboard
+# can still display familiar baseline/current/delta fields.
+# =========================================================
+
+def build_cell_validation_rows(
+    baseline_snapshot,
+    candidate_cells,
+    guardrails
+):
+
+    if (
+        baseline_snapshot is None
+
+        or
+
+        candidate_cells is None
+    ):
+
+        return []
+
+
+    comparison = (
+        compare_cell_kpis(
+
+            baseline_snapshot,
+
+            {
+                "cells":
+                    candidate_cells
+            }
+        )
+    )
+
+
+    policy = (
+        guardrails[
+            "policy"
+        ]
+    )
+
+
+    rows = []
+
+
+    for cell_id in sorted(
+        comparison
+    ):
+
+        result = comparison[
+            cell_id
+        ]
+
+
+        if (
+            result[
+                "status"
+            ]
+            != "COMPARABLE"
+        ):
+
+            continue
+
+
+        baseline = (
+            result[
+                "baseline"
+            ]
+        )
+
+
+        candidate = (
+            result[
+                "candidate"
+            ]
+        )
+
+
+        delta = (
+            result[
+                "delta"
+            ]
+        )
+
+
+        prb_failed = (
+
+            delta[
+                "prb_percentage_points"
+            ]
+
+            > policy[
+                "max_comparable_cell_prb_increase_pp"
+            ]
+        )
+
+
+        sinr_failed = (
+
+            delta[
+                "sinr_db"
+            ]
+
+            < -policy[
+                "max_comparable_cell_sinr_drop_db"
+            ]
+        )
+
+
+        rsrp_failed = (
+
+            delta[
+                "rsrp_db"
+            ]
+
+            < -policy[
+                "max_comparable_cell_rsrp_drop_db"
+            ]
+        )
+
+
+        rows.append({
+
+            "cell_id":
+                cell_id,
+
+            "baseline": {
+
+                "prb_utilization":
+                    baseline[
+                        "prb_utilization_pct"
+                    ],
+
+                "sinr_db":
+                    baseline[
+                        "sinr_db"
+                    ],
+
+                "rsrp_dbm":
+                    baseline[
+                        "rsrp_dbm"
+                    ],
+
+                "active_users":
+                    baseline[
+                        "active_users"
+                    ]
+            },
+
+            "current": {
+
+                "prb_utilization":
+                    candidate[
+                        "prb_utilization_pct"
+                    ],
+
+                "sinr_db":
+                    candidate[
+                        "sinr_db"
+                    ],
+
+                "rsrp_dbm":
+                    candidate[
+                        "rsrp_dbm"
+                    ],
+
+                "active_users":
+                    candidate[
+                        "active_users"
+                    ]
+            },
+
+            "delta": {
+
+                "prb":
+                    delta[
+                        "prb_percentage_points"
+                    ],
+
+                "sinr":
+                    delta[
+                        "sinr_db"
+                    ],
+
+                "rsrp":
+                    delta[
+                        "rsrp_db"
+                    ],
+
+                "users":
+                    delta[
+                        "active_users"
+                    ]
+            },
+
+            "thresholds": {
+
+                "prb_change":
+                    policy[
+                        "max_comparable_cell_prb_increase_pp"
+                    ],
+
+                "sinr_drop":
+                    policy[
+                        "max_comparable_cell_sinr_drop_db"
+                    ],
+
+                "rsrp_drop":
+                    policy[
+                        "max_comparable_cell_rsrp_drop_db"
+                    ],
+
+                # UE movement is intentionally not a
+                # direct failure threshold anymore.
+                "user_change":
+                    None
+            },
+
+            "checks": {
+
+                "prb":
+                    (
+                        "FAIL"
+                        if prb_failed
+                        else "PASS"
+                    ),
+
+                "sinr":
+                    (
+                        "FAIL"
+                        if sinr_failed
+                        else "PASS"
+                    ),
+
+                "rsrp":
+                    (
+                        "FAIL"
+                        if rsrp_failed
+                        else "PASS"
+                    ),
+
+                "users":
+                    "INFO"
+            }
+        })
+
+
+    return rows
+
+
+# =========================================================
+# GUARDRAILS -> API VALIDATION VIEW
+# =========================================================
+
+def guardrails_to_validation(
+    guardrails,
+    baseline_snapshot=None,
+    candidate_cells=None
+):
+
+    return {
+
+        "status":
+            guardrails[
+                "verdict"
+            ],
+
+        "failed_cells":
+            extract_failed_cells(
+                guardrails
+            ),
+
+        "cells":
+            build_cell_validation_rows(
+
+                baseline_snapshot,
+                candidate_cells,
+                guardrails
+            ),
+
+        "checks":
+            guardrails[
+                "checks"
+            ],
+
+        "failed_checks":
+            guardrails[
+                "failed_checks"
+            ],
+
+        "summary":
+            guardrails[
+                "summary"
+            ],
+
+        "reassociation":
+            guardrails[
+                "reassociation"
+            ]
+    }
+
+
+# =========================================================
+# CURRENT KNOWN-GOOD VALIDATION
+# =========================================================
+
+def get_current_validation():
+    """
+    Return a fresh validation of the ACTIVE RAN under the
+    current authoritative weather + traffic-clock context.
+
+    This intentionally re-observes the active configuration
+    before validating it. "Known-good configuration" does not
+    imply that current traffic/load is still inside the safe
+    operating envelope.
+    """
+
+    observation = controller.get_baseline_health()
+    snapshot = controller.get_active_snapshot()
+
+    return guardrails_to_validation(
+        observation["baseline_health"]["guardrails"],
+        baseline_snapshot=snapshot,
+        candidate_cells=snapshot["cells"],
+    )
+
+
+# =========================================================
+# DYNAMIC ALARMS
+# =========================================================
+
+def build_active_alarms():
+
+    snapshot = (
+        controller.get_active_snapshot()
+    )
+
+
+    alarms = []
+
+
+    alarm_number = 1
+
+
+    for cell_id in sorted(
+        snapshot[
+            "cells"
+        ]
+    ):
+
+        cell = (
+            snapshot[
+                "cells"
+            ][
+                cell_id
+            ]
+        )
+
+
+        degraded_users = int(
+
+            cell.get(
+                "serviceability_ue_mix",
+                {}
+            ).get(
+                "DEGRADED",
+                0
+            )
+        )
+
+
+        if degraded_users > 0:
+
+            alarms.append({
+
+                "alarm_id":
+                    (
+                        f"ALARM-"
+                        f"{alarm_number:03d}"
+                    ),
+
+                "cell_id":
+                    cell_id,
+
+                "severity":
+                    "MINOR",
+
+                "type":
+                    "DEGRADED_SERVICE",
+
+                "active":
+                    True,
+
+                "detail":
+                    (
+                        f"{degraded_users} active UE "
+                        "represented in DEGRADED service"
+                    )
+            })
+
+
+            alarm_number += 1
+
+
+        if (
+            cell[
+                "prb_utilization_pct"
+            ]
+            >= 85.0
+        ):
+
+            alarms.append({
+
+                "alarm_id":
+                    (
+                        f"ALARM-"
+                        f"{alarm_number:03d}"
+                    ),
+
+                "cell_id":
+                    cell_id,
+
+                "severity":
+                    "MAJOR",
+
+                "type":
+                    "HIGH_PRB_UTILIZATION",
+
+                "active":
+                    True,
+
+                "detail":
+                    (
+                        "PRB utilization is "
+                        f"{cell['prb_utilization_pct']} %"
+                    )
+            })
+
+
+            alarm_number += 1
+
+
+    return alarms
+
+
+# =========================================================
+# EXTERNAL PRECHECK
+# =========================================================
+#
+# RAN_ADAPTER_URL remains intentionally configurable.
+#
+# This preserves the previous ConfigMap / integration
+# failure exercise where the application process is healthy
+# while its configured RAN adapter endpoint is unavailable.
+# =========================================================
 
 def run_precheck_data():
 
     ran_adapter_available = False
 
+
+    adapter_url = (
+        RAN_ADAPTER_URL.rstrip(
+            "/"
+        )
+    )
+
+
     try:
 
         with urlopen(
-            f"{RAN_ADAPTER_URL}/cells",
+
+            f"{adapter_url}/cells",
+
             timeout=2
+
         ) as response:
 
             ran_adapter_available = (
                 response.status == 200
             )
 
+
     except (
         URLError,
-        TimeoutError
+        TimeoutError,
+        OSError
     ):
+
         ran_adapter_available = False
+
+
+    state = (
+        controller.get_active_state()
+    )
 
 
     checks = {
@@ -167,75 +1243,121 @@ def run_precheck_data():
             ran_adapter_available,
 
         "cells_discovered":
-            len(environment["cells"]) > 0,
+            (
+                len(
+                    state[
+                        "configuration"
+                    ][
+                        "cells"
+                    ]
+                )
+                > 0
+            ),
 
         "kpi_baseline_collected":
-            all(
-                "prb_utilization" in cell
-                and "sinr_db" in cell
-                and "rsrp_dbm" in cell
-                and "active_users" in cell
-                for cell
-                in environment["cells"]
+            (
+                len(
+                    state[
+                        "cells"
+                    ]
+                )
+                > 0
             )
     }
 
 
-    overall_pass = all(
-        checks.values()
-    )
-
-
     return {
+
         "status":
-            "PASS"
-            if overall_pass
-            else "FAIL",
+            (
+                "PASS"
+
+                if all(
+                    checks.values()
+                )
+
+                else "FAIL"
+            ),
 
         "checks":
-            checks
+            checks,
+
+        "ran_adapter_url":
+            RAN_ADAPTER_URL
     }
 
 
-# ---------------------------------------------------------
+# =========================================================
 # SAFETY SCORE
-# ---------------------------------------------------------
+# =========================================================
+#
+# This remains a learning-lab rollout readiness summary.
+#
+# It is not a production operator scoring algorithm.
+# =========================================================
 
 def get_safety_score_data():
 
-    active_alarms = [
-        alarm
-        for alarm
-        in environment["alarms"]
-        if alarm["active"]
-    ]
+    validation = (
+        get_current_validation()
+    )
+
+
+    active_alarms = (
+        build_active_alarms()
+    )
 
 
     environment_health = 25
 
+
     kubernetes_capacity = 20
 
-    ran_baseline_stable = 20
+
+    ran_baseline_stable = (
+
+        20
+
+        if (
+            validation[
+                "status"
+            ]
+            == "PASS"
+        )
+
+        else 0
+    )
+
 
     recent_alarms = (
+
         15
-        if len(active_alarms) == 0
+
+        if not active_alarms
+
         else 10
     )
 
-    previous_release_health = 20
+
+    previous_config_health = 20
 
 
     total = (
+
         environment_health
+
         + kubernetes_capacity
+
         + ran_baseline_stable
+
         + recent_alarms
-        + previous_release_health
+
+        + previous_config_health
     )
 
 
     return {
+
         "environment_health":
             environment_health,
 
@@ -248,217 +1370,26 @@ def get_safety_score_data():
         "recent_alarms":
             recent_alarms,
 
-        "previous_release_health":
-            previous_release_health,
+        "previous_config_health":
+            previous_config_health,
 
         "total":
             total,
 
         "rollout_allowed":
-            total >= 80
-    }
+            total >= 80,
 
-
-# ---------------------------------------------------------
-# RAN KPI VALIDATION
-# ---------------------------------------------------------
-
-def check_ran_validation():
-
-    failed_cells = []
-
-    cell_results = []
-
-
-    for cell in environment["cells"]:
-
-        baseline = next(
-            baseline_cell
-            for baseline_cell
-            in baseline_cells
-            if baseline_cell["cell_id"]
-            == cell["cell_id"]
-        )
-
-
-        # KPI deltas.
-        prb_delta = (
-            cell["prb_utilization"]
-            - baseline["prb_utilization"]
-        )
-
-        sinr_delta = (
-            cell["sinr_db"]
-            - baseline["sinr_db"]
-        )
-
-        rsrp_delta = (
-            cell["rsrp_dbm"]
-            - baseline["rsrp_dbm"]
-        )
-
-        user_delta = (
-            cell["active_users"]
-            - baseline["active_users"]
-        )
-
-
-        # Threshold evaluation.
-        #
-        # PRB:
-        # large increase or decrease is considered abnormal.
-        prb_failed = (
-            abs(prb_delta)
-            > PRB_THRESHOLD
-        )
-
-        # SINR:
-        # negative delta means degradation.
-        sinr_failed = (
-            sinr_delta
-            < -SINR_THRESHOLD
-        )
-
-        # RSRP:
-        # more negative value means weaker signal.
-        rsrp_failed = (
-            rsrp_delta
-            < -RSRP_THRESHOLD
-        )
-
-        # Users:
-        # large increase or decrease can indicate
-        # traffic imbalance or session loss.
-        users_failed = (
-            abs(user_delta)
-            > USER_THRESHOLD
-        )
-
-
-        if (
-            prb_failed
-            or sinr_failed
-            or rsrp_failed
-            or users_failed
-        ):
-            failed_cells.append(
-                cell["cell_id"]
+        "note":
+            (
+                "Learning-lab rollout readiness score; "
+                "not a production operator policy."
             )
-
-
-        cell_results.append({
-
-            "cell_id":
-                cell["cell_id"],
-
-
-            "baseline": {
-
-                "prb_utilization":
-                    baseline["prb_utilization"],
-
-                "sinr_db":
-                    baseline["sinr_db"],
-
-                "rsrp_dbm":
-                    baseline["rsrp_dbm"],
-
-                "active_users":
-                    baseline["active_users"]
-            },
-
-
-            "current": {
-
-                "prb_utilization":
-                    cell["prb_utilization"],
-
-                "sinr_db":
-                    cell["sinr_db"],
-
-                "rsrp_dbm":
-                    cell["rsrp_dbm"],
-
-                "active_users":
-                    cell["active_users"]
-            },
-
-
-            "delta": {
-
-                "prb":
-                    prb_delta,
-
-                "sinr":
-                    sinr_delta,
-
-                "rsrp":
-                    rsrp_delta,
-
-                "users":
-                    user_delta
-            },
-
-
-            "thresholds": {
-
-                "prb_change":
-                    PRB_THRESHOLD,
-
-                "sinr_drop":
-                    SINR_THRESHOLD,
-
-                "rsrp_drop":
-                    RSRP_THRESHOLD,
-
-                "user_change":
-                    USER_THRESHOLD
-            },
-
-
-            "checks": {
-
-                "prb":
-                    "FAIL"
-                    if prb_failed
-                    else "PASS",
-
-                "sinr":
-                    "FAIL"
-                    if sinr_failed
-                    else "PASS",
-
-                "rsrp":
-                    "FAIL"
-                    if rsrp_failed
-                    else "PASS",
-
-                "users":
-                    "FAIL"
-                    if users_failed
-                    else "PASS"
-            }
-        })
-
-
-    return {
-
-        "status":
-            "FAIL"
-            if failed_cells
-            else "PASS",
-
-        "failed_cells":
-            failed_cells,
-
-        "cells":
-            cell_results
     }
 
 
-# ---------------------------------------------------------
-# WEB DASHBOARD
-# ---------------------------------------------------------
+# =========================================================
+# DASHBOARD
+# =========================================================
 
 @app.get(
     "/",
@@ -469,48 +1400,136 @@ def dashboard():
     return DASHBOARD_HTML
 
 
-# ---------------------------------------------------------
-# PLATFORM / RAN STATUS
-# ---------------------------------------------------------
+# =========================================================
+# STATUS
+# =========================================================
 
-@app.get("/status")
+@app.get(
+    "/status"
+)
 def get_status():
+    """
+    Fresh operator-facing state summary.
 
-    validation = (
-        check_ran_validation()
-    )
+    One controller baseline observation supplies the weather,
+    traffic simulation timestamp, service state and baseline-health
+    decision so the fields describe the same modelled context.
+    """
+
+    observation = controller.get_baseline_health()
+    state = controller.get_active_state()
+
+    baseline_health = observation["baseline_health"]
 
     return {
+        "environment": ENVIRONMENT_NAME,
+        "scenario": SCENARIO_METADATA["scenario_id"],
+        "application_release": APPLICATION_RELEASE,
+        "ran_config_version": state["active_version"],
+        "rollout_state": state["rollout_state"],
+        "last_action": state["last_action"],
+        "application_health": "HEALTHY",
 
-        "environment":
-            environment[
-                "environment_id"
-            ],
+        # Compatibility field used by the current dashboard.
+        "ran_validation": baseline_health["status"],
 
-        "active_release":
-            environment["release"],
+        "served_ratio_pct": observation[
+            "service"
+        ][
+            "served_ratio_pct"
+        ],
 
-        "rollout_state":
-            environment[
-                "rollout_state"
-            ],
-
-        "application_health":
-            "HEALTHY",
-
-        "ran_validation":
-            validation["status"]
+        # New authoritative live context.
+        "weather": observation["weather"],
+        "simulation_timestamp": observation[
+            "simulation_timestamp"
+        ],
+        "baseline_health": baseline_health,
+        "service": observation["service"],
     }
 
 
-# ---------------------------------------------------------
-# CELLS
-# ---------------------------------------------------------
+@app.get(
+    "/weather"
+)
+def get_weather():
+    """
+    Return the exact weather snapshot and traffic simulation clock
+    used to re-evaluate the active RAN for this request.
 
-@app.get("/cells")
+    The dashboard must consume this endpoint (or /status)
+    rather than fetching Open-Meteo independently. That keeps
+    displayed weather and modelled RAN state consistent.
+    """
+
+    observation = controller.get_baseline_health()
+
+    return {
+        "active_version": observation["active_version"],
+        "weather": observation["weather"],
+        "simulation_timestamp": observation[
+            "simulation_timestamp"
+        ],
+        "baseline_health": {
+            "status": observation[
+                "baseline_health"
+            ][
+                "status"
+            ],
+            "inside_safe_envelope": observation[
+                "baseline_health"
+            ][
+                "inside_safe_envelope"
+            ],
+            "failed_check_count": observation[
+                "baseline_health"
+            ][
+                "failed_check_count"
+            ],
+            "failed_checks": observation[
+                "baseline_health"
+            ][
+                "failed_checks"
+            ],
+        },
+        "service": observation["service"],
+    }
+
+
+@app.get(
+    "/baseline-health"
+)
+def get_baseline_health():
+    """
+    Full active-RAN baseline health observation for operator
+    troubleshooting.
+    """
+
+    return controller.get_baseline_health()
+
+
+# =========================================================
+# CELLS
+# =========================================================
+
+@app.get(
+    "/cells"
+)
 def get_cells():
 
-    return environment["cells"]
+    snapshot = (
+        controller.get_active_snapshot()
+    )
+
+
+    return (
+        normalized_cells_to_dashboard(
+
+            snapshot[
+                "cells"
+            ]
+        )
+    )
 
 
 @app.get(
@@ -520,728 +1539,787 @@ def get_cell_kpis(
     cell_id: str
 ):
 
-    for cell in environment["cells"]:
+    snapshot = (
+        controller.get_active_snapshot()
+    )
+
+
+    cell = (
+        snapshot[
+            "cells"
+        ].get(
+            cell_id
+        )
+    )
+
+
+    if cell is not None:
+
+        return (
+            normalized_cell_to_dashboard(
+                cell
+            )
+        )
+
+
+    # -----------------------------------------------------
+    # The cell may still exist in RAN configuration but
+    # currently have no assigned traffic.
+    # -----------------------------------------------------
+
+    for configured_cell in snapshot[
+        "configuration"
+    ][
+        "cells"
+    ]:
 
         if (
-            cell["cell_id"]
+            configured_cell[
+                "cell_id"
+            ]
             == cell_id
         ):
 
             return {
 
                 "cell_id":
-                    cell["cell_id"],
+                    cell_id,
+
+                "site_id":
+                    configured_cell[
+                        "site_id"
+                    ],
+
+                "sector_id":
+                    configured_cell[
+                        "sector_id"
+                    ],
+
+                "technology":
+                    configured_cell[
+                        "technology"
+                    ],
+
+                "band":
+                    configured_cell[
+                        "band"
+                    ],
+
+                "bandwidth_mhz":
+                    configured_cell[
+                        "bandwidth_mhz"
+                    ],
 
                 "prb_utilization":
-                    cell[
-                        "prb_utilization"
-                    ],
+                    None,
 
                 "sinr_db":
-                    cell["sinr_db"],
+                    None,
 
                 "rsrp_dbm":
-                    cell["rsrp_dbm"],
+                    None,
 
                 "active_users":
-                    cell[
-                        "active_users"
-                    ],
+                    0,
 
                 "status":
-                    cell["status"]
+                    "NOT_SERVING",
+
+                "traffic_mbps":
+                    0.0,
+
+                "estimated_capacity_mbps":
+                    None,
+
+                "serviceability_ue_mix":
+                    {}
             }
 
 
     raise HTTPException(
+
         status_code=404,
-        detail="Cell not found"
+
+        detail=(
+            f"Unknown cell_id: "
+            f"{cell_id}"
+        )
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # ALARMS
-# ---------------------------------------------------------
+# =========================================================
 
-@app.get("/alarms")
+@app.get(
+    "/alarms"
+)
 def get_alarms():
 
-    return environment["alarms"]
+    return (
+        build_active_alarms()
+    )
 
 
-# ---------------------------------------------------------
-# EVENT TIMELINE
-# ---------------------------------------------------------
+# =========================================================
+# EVENTS
+# =========================================================
 
-@app.get("/events")
+@app.get(
+    "/events"
+)
 def get_events():
 
-    return event_log
+    events = (
+        controller.get_events(
+            limit=100
+        )
+    )
 
 
-# ---------------------------------------------------------
-# PRECHECK ENDPOINT
-# ---------------------------------------------------------
+    # Compatibility alias:
+    #
+    # previous API used "type";
+    # controller uses "event_type".
 
-@app.get("/precheck")
+    return [
+
+        {
+
+            **event,
+
+            "type":
+                event[
+                    "event_type"
+                ]
+        }
+
+        for event
+        in events
+    ]
+
+
+# =========================================================
+# PRECHECK
+# =========================================================
+
+@app.get(
+    "/precheck"
+)
 def run_precheck():
 
-    return run_precheck_data()
-
-
-# ---------------------------------------------------------
-# SAFETY SCORE ENDPOINT
-# ---------------------------------------------------------
-
-@app.get("/safety-score")
-def get_safety_score():
-
-    return get_safety_score_data()
-
-
-# ---------------------------------------------------------
-# CONFIGURATION / INCIDENT INJECTION
-# ---------------------------------------------------------
-
-@app.post("/configuration")
-def apply_configuration(
-    mode: str
-):
-
-    # -----------------------------------------------------
-    # DEGRADED MODE
-    # -----------------------------------------------------
-
-    if mode == "degraded":
-
-        # CELL-001:
-        #
-        # Simulated overload:
-        #
-        # PRB   54 -> 94 %
-        # SINR  18 -> 2 dB
-        # RSRP -82 -> -113 dBm
-        # users 82 -> 151
-
-        environment["cells"][0][
-            "prb_utilization"
-        ] = 94
-
-        environment["cells"][0][
-            "sinr_db"
-        ] = 2
-
-        environment["cells"][0][
-            "rsrp_dbm"
-        ] = -113
-
-        environment["cells"][0][
-            "active_users"
-        ] = 151
-
-
-        # CELL-002:
-        #
-        # Simulated severe coverage degradation
-        # and user/session loss:
-        #
-        # PRB   68 -> 29 %
-        # SINR   8 -> -3 dB
-        # RSRP -94 -> -121 dBm
-        # users 103 -> 31
-
-        environment["cells"][1][
-            "prb_utilization"
-        ] = 29
-
-        environment["cells"][1][
-            "sinr_db"
-        ] = -3
-
-        environment["cells"][1][
-            "rsrp_dbm"
-        ] = -121
-
-        environment["cells"][1][
-            "active_users"
-        ] = 31
-
-
-        environment[
-            "rollout_state"
-        ] = "REGRESSION"
-
-
-        add_event(
-            "KPI",
-            "FAIL",
-            "Major RAN regression injected: "
-            "CELL-001 overload and "
-            "CELL-002 coverage/user loss"
-        )
-
-
-        return {
-
-            "status":
-                "APPLIED",
-
-            "mode":
-                "degraded",
-
-            "validation":
-                check_ran_validation()
-        }
-
-
-    # -----------------------------------------------------
-    # HEALTHY MODE
-    # -----------------------------------------------------
-
-    if mode == "healthy":
-
-        environment["cells"] = (
-            deepcopy(
-                baseline_cells
-            )
-        )
-
-        environment[
-            "rollout_state"
-        ] = "STABLE"
-
-
-        add_event(
-            "CONFIGURATION",
-            "PASS",
-            "Healthy RAN baseline "
-            "configuration restored"
-        )
-
-
-        return {
-
-            "status":
-                "APPLIED",
-
-            "mode":
-                "healthy",
-
-            "validation":
-                check_ran_validation()
-        }
-
-
-    raise HTTPException(
-        status_code=400,
-        detail="Unknown configuration mode"
-    )
-
-
-# ---------------------------------------------------------
-# VALIDATION
-# ---------------------------------------------------------
-
-@app.get("/validation")
-def validate_ran():
-
     return (
-        check_ran_validation()
-    )
-
-
-# ---------------------------------------------------------
-# MANUAL APPLICATION-LEVEL ROLLBACK
-# ---------------------------------------------------------
-
-@app.post("/rollback")
-def rollback():
-
-    previous_release = (
-        environment["release"]
-    )
-
-
-    environment["cells"] = (
-        deepcopy(
-            baseline_cells
-        )
-    )
-
-    environment["release"] = (
-        "v1.0.0"
-    )
-
-    environment[
-        "rollout_state"
-    ] = "ROLLED_BACK"
-
-
-    add_event(
-        "ROLLBACK",
-        "PASS",
-        f"Release {previous_release} "
-        "rolled back to v1.0.0"
-    )
-
-
-    validation = (
-        check_ran_validation()
-    )
-
-
-    add_event(
-        "VALIDATION",
-        validation["status"],
-        "Post-rollback RAN "
-        "validation "
-        f"{validation['status']}"
-    )
-
-
-    return {
-
-        "status":
-            "ROLLED_BACK",
-
-        "active_release":
-            environment["release"],
-
-        "validation":
-            validation
-    }
-
-
-# ---------------------------------------------------------
-# GUARDED RAN-AWARE ROLLOUT
-# ---------------------------------------------------------
-
-@app.post("/rollout")
-def rollout():
-
-    steps = []
-
-    attempted_release = (
-        "v1.1.0"
-    )
-
-
-    # -----------------------------------------------------
-    # STEP 1
-    # PRECHECK
-    # -----------------------------------------------------
-
-    precheck = (
         run_precheck_data()
     )
 
 
-    steps.append({
+# =========================================================
+# SAFETY SCORE
+# =========================================================
 
-        "step":
-            "Pre-check",
+@app.get(
+    "/safety-score"
+)
+def get_safety_score():
 
-        "status":
-            precheck["status"]
-    })
-
-
-    add_event(
-        "PRECHECK",
-        precheck["status"],
-        "RAN integration pre-check "
-        f"{precheck['status']}"
-    )
-
-
-    if (
-        precheck["status"]
-        != "PASS"
-    ):
-
-        environment[
-            "rollout_state"
-        ] = "BLOCKED"
-
-
-        return {
-
-            "status":
-                "BLOCKED",
-
-            "reason":
-                "Pre-check failed",
-
-            "steps":
-                steps,
-
-            "precheck":
-                precheck
-        }
-
-
-    # -----------------------------------------------------
-    # STEP 2
-    # SAFETY SCORE
-    # -----------------------------------------------------
-
-    safety = (
+    return (
         get_safety_score_data()
     )
 
 
-    safety_status = (
-        "PASS"
-        if safety[
-            "rollout_allowed"
-        ]
-        else "FAIL"
+# =========================================================
+# CURRENT VALIDATION
+# =========================================================
+
+@app.get(
+    "/validation"
+)
+def validate_ran():
+
+    return (
+        get_current_validation()
     )
 
 
-    steps.append({
+# =========================================================
+# RAN CONFIGURATION
+# =========================================================
 
-        "step":
-            "Safety score",
+@app.get(
+    "/ran-config"
+)
+def get_ran_config():
 
-        "status":
-            safety_status,
-
-        "detail":
-            f"{safety['total']}/100"
-    })
-
-
-    add_event(
-        "SAFETY",
-        safety_status,
-        f"Safety score "
-        f"{safety['total']}/100"
+    topology = (
+        build_topology_view()
     )
-
-
-    if not safety[
-        "rollout_allowed"
-    ]:
-
-        environment[
-            "rollout_state"
-        ] = "BLOCKED"
-
-
-        return {
-
-            "status":
-                "BLOCKED",
-
-            "reason":
-                "Safety score "
-                "below threshold",
-
-            "steps":
-                steps,
-
-            "safety_score":
-                safety
-        }
-
-
-    # -----------------------------------------------------
-    # STEP 3
-    # RELEASE ACTIVATION
-    # -----------------------------------------------------
-
-    environment["release"] = (
-        attempted_release
-    )
-
-    environment[
-        "rollout_state"
-    ] = "DEPLOYING"
-
-
-    steps.append({
-
-        "step":
-            f"Activate release "
-            f"{attempted_release}",
-
-        "status":
-            "PASS"
-    })
-
-
-    add_event(
-        "RELEASE",
-        "PASS",
-        f"Release "
-        f"{attempted_release} "
-        "activated"
-    )
-
-
-    # -----------------------------------------------------
-    # STEP 4
-    # SIMULATED POST-CHANGE RAN REGRESSION
-    # -----------------------------------------------------
-
-    # CELL-001 overload.
-
-    environment["cells"][0][
-        "prb_utilization"
-    ] = 94
-
-    environment["cells"][0][
-        "sinr_db"
-    ] = 2
-
-    environment["cells"][0][
-        "rsrp_dbm"
-    ] = -113
-
-    environment["cells"][0][
-        "active_users"
-    ] = 151
-
-
-    # CELL-002 coverage degradation.
-
-    environment["cells"][1][
-        "prb_utilization"
-    ] = 29
-
-    environment["cells"][1][
-        "sinr_db"
-    ] = -3
-
-    environment["cells"][1][
-        "rsrp_dbm"
-    ] = -121
-
-    environment["cells"][1][
-        "active_users"
-    ] = 31
-
-
-    # Preserve the failed KPI state
-    # before automatic rollback.
-
-    regression_snapshot = (
-        deepcopy(
-            environment["cells"]
-        )
-    )
-
-
-    steps.append({
-
-        "step":
-            "Post-change KPI collection",
-
-        "status":
-            "PASS"
-    })
-
-
-    add_event(
-        "KPI",
-        "FAIL",
-        "RAN regression: "
-        "CELL-001 PRB 54->94, "
-        "SINR 18->2, "
-        "RSRP -82->-113, "
-        "users 82->151; "
-        "CELL-002 PRB 68->29, "
-        "SINR 8->-3, "
-        "RSRP -94->-121, "
-        "users 103->31"
-    )
-
-
-    # -----------------------------------------------------
-    # STEP 5
-    # RAN KPI VALIDATION
-    # -----------------------------------------------------
-
-    validation = (
-        check_ran_validation()
-    )
-
-
-    steps.append({
-
-        "step":
-            "RAN KPI validation",
-
-        "status":
-            validation["status"]
-    })
-
-
-    add_event(
-        "VALIDATION",
-        validation["status"],
-        "Post-change RAN "
-        "validation "
-        f"{validation['status']}"
-    )
-
-
-    # -----------------------------------------------------
-    # STEP 6
-    # AUTOMATIC APPLICATION-LEVEL ROLLBACK
-    # -----------------------------------------------------
-
-    if (
-        validation["status"]
-        == "FAIL"
-    ):
-
-        failed_release = (
-            environment["release"]
-        )
-
-
-        steps.append({
-
-            "step":
-                "Automatic rollback "
-                "triggered",
-
-            "status":
-                "PASS"
-        })
-
-
-        add_event(
-            "ROLLBACK",
-            "PASS",
-            "Regression detected. "
-            f"Rolling back "
-            f"{failed_release}"
-        )
-
-
-        # Restore known-good RAN baseline.
-
-        environment["cells"] = (
-            deepcopy(
-                baseline_cells
-            )
-        )
-
-        # Restore known-good release.
-
-        environment["release"] = (
-            "v1.0.0"
-        )
-
-        environment[
-            "rollout_state"
-        ] = "ROLLED_BACK"
-
-
-        post_rollback_validation = (
-            check_ran_validation()
-        )
-
-
-        steps.append({
-
-            "step":
-                "Restore release v1.0.0",
-
-            "status":
-                "PASS"
-        })
-
-
-        steps.append({
-
-            "step":
-                "Post-rollback validation",
-
-            "status":
-                post_rollback_validation[
-                    "status"
-                ]
-        })
-
-
-        add_event(
-            "RELEASE",
-            "PASS",
-            "Previous release "
-            "v1.0.0 restored"
-        )
-
-
-        add_event(
-            "VALIDATION",
-            post_rollback_validation[
-                "status"
-            ],
-            "Post-rollback RAN "
-            "validation "
-            f"{post_rollback_validation['status']}"
-        )
-
-
-        return {
-
-            "status":
-                "ROLLED_BACK",
-
-            "attempted_release":
-                attempted_release,
-
-            "active_release":
-                environment["release"],
-
-            "steps":
-                steps,
-
-            "regression_snapshot":
-                regression_snapshot,
-
-            "failed_validation":
-                validation,
-
-            "post_rollback_validation":
-                post_rollback_validation
-        }
-
-
-    # -----------------------------------------------------
-    # SUCCESS PATH
-    # -----------------------------------------------------
-
-    environment[
-        "rollout_state"
-    ] = "STABLE"
-
-
-    steps.append({
-
-        "step":
-            "Rollout completed",
-
-        "status":
-            "PASS"
-    })
 
 
     return {
 
-        "status":
-            "DEPLOYED",
+        "site":
+            SCENARIO_METADATA[
+                "scenario_id"
+            ],
 
-        "active_release":
-            environment["release"],
+        "scenario": {
 
-        "steps":
-            steps,
+            "scenario_id":
+                SCENARIO_METADATA[
+                    "scenario_id"
+                ],
 
-        "validation":
-            validation
+            "name":
+                SCENARIO_METADATA[
+                    "name"
+                ],
+
+            "real_bts_locations":
+                SCENARIO_METADATA[
+                    "real_bts_locations"
+                ]
+        },
+
+        "active":
+            get_active_dashboard_config(),
+
+        "factory_baseline":
+            get_factory_dashboard_config(),
+
+        "topology":
+            topology,
+
+        "allowed_ranges": {
+
+            "tx_power_dbm": {
+
+                "min":
+                    MIN_TX_POWER_DBM,
+
+                "max":
+                    MAX_TX_POWER_DBM
+            },
+
+            "electrical_tilt_deg": {
+
+                "min":
+                    MIN_ELECTRICAL_TILT_DEG,
+
+                "max":
+                    MAX_ELECTRICAL_TILT_DEG
+            },
+
+            # Compatibility key for the current UI.
+            #
+            # The new model is actually band-aware, so the
+            # definitive values are in
+            # bandwidth_mhz_by_band below.
+            "5G_bandwidth_mhz":
+                sorted(
+
+                    ALLOWED_BANDWIDTHS_MHZ[
+                        "n28"
+                    ]
+
+                    |
+
+                    ALLOWED_BANDWIDTHS_MHZ[
+                        "n78"
+                    ]
+                ),
+
+            "4G_bandwidth_mhz":
+                sorted(
+
+                    ALLOWED_BANDWIDTHS_MHZ[
+                        "B3"
+                    ]
+                ),
+
+            "bandwidth_mhz_by_band": {
+
+                band:
+                    sorted(
+                        values
+                    )
+
+                for (
+                    band,
+                    values
+                ) in ALLOWED_BANDWIDTHS_MHZ.items()
+            }
+        }
     }
+
+
+# =========================================================
+# EVALUATE CANDIDATE
+# =========================================================
+#
+# This endpoint performs:
+#
+# config
+#   -> RF
+#   -> interference
+#   -> UE association
+#   -> traffic
+#   -> KPI
+#   -> guardrails
+#
+# but does NOT change active known-good state.
+# =========================================================
+
+@app.post(
+    "/ran-config/evaluate"
+)
+def evaluate_candidate(
+    request: CandidateConfigRequest
+):
+    """
+    Non-mutating candidate preview.
+
+    The controller freezes one weather snapshot and one traffic
+    simulation timestamp, re-observes the active baseline under that
+    pair, evaluates the candidate under the same pair, and returns
+    separate baseline-health and candidate-outcome decisions.
+    """
+
+    (
+        cell_updates,
+        antenna_updates
+    ) = request_to_updates(
+        request
+    )
+
+    try:
+        result = controller.evaluate(
+            cell_updates=cell_updates,
+            antenna_updates=antenna_updates,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    # evaluate() refreshes the active observation but does not
+    # change active configuration. Therefore this snapshot is
+    # the same weather + traffic-clock baseline used by the
+    # controller attempt.
+    baseline_snapshot = controller.get_active_snapshot()
+
+    validation = guardrails_to_validation(
+        result["guardrails"],
+        baseline_snapshot=baseline_snapshot,
+        candidate_cells=result["candidate_cells"],
+    )
+
+    candidate_config = inventory_to_dashboard_config(
+        result["candidate_configuration"],
+        result["candidate_version"],
+    )
+
+    return {
+        # Compatibility contract used by the current dashboard.
+        "status": "EVALUATED",
+        "candidate_version": result["candidate_version"],
+        "active_version": result["active_version"],
+        "candidate_config": candidate_config,
+        "predicted_cells": normalized_cells_to_dashboard(
+            result["candidate_cells"]
+        ),
+        "validation": validation,
+        "would_be_accepted": result["would_be_accepted"],
+
+        # Rich controller context.
+        "decision": result["decision"],
+        "attempt_id": result["attempt_id"],
+        "baseline_version": result["baseline_version"],
+        "weather": result["weather"],
+        "simulation_timestamp": result[
+            "simulation_timestamp"
+        ],
+        "baseline_health": result["baseline_health"],
+        "baseline_service": result["baseline_service"],
+        "candidate_service": result["candidate_service"],
+        "guardrails": result["guardrails"],
+        "reassociation": result[
+            "guardrails"
+        ][
+            "reassociation"
+        ],
+    }
+
+
+# =========================================================
+# GUARDED APPLY
+# =========================================================
+
+@app.post(
+    "/ran-config/guarded-apply"
+)
+def guarded_apply_candidate(
+    request: CandidateConfigRequest
+):
+    """
+    Guarded configuration apply.
+
+    Order:
+      1. external adapter pre-check,
+      2. freeze one weather + traffic-clock context pair,
+      3. capture the active same-context baseline,
+      4. controller baseline-health pre-check,
+      5. only if healthy: build/evaluate candidate,
+      6. promote or rollback.
+
+    An unhealthy baseline returns BLOCKED. No candidate RF
+    evaluation occurs and no rollback is needed.
+    """
+
+    # -----------------------------------------------------
+    # STEP 0 - EXTERNAL INTEGRATION PRECHECK
+    # -----------------------------------------------------
+
+    precheck = run_precheck_data()
+
+    if precheck["status"] != "PASS":
+        return {
+            "status": "BLOCKED",
+            "reason": "EXTERNAL_PRECHECK_FAILED",
+            "active_version": controller.get_active_state()[
+                "active_version"
+            ],
+            "candidate_evaluated": False,
+            "configuration_changed": False,
+            "steps": [
+                {
+                    "step": "External RAN adapter pre-check",
+                    "status": "FAIL",
+                }
+            ],
+            "precheck": precheck,
+        }
+
+    (
+        cell_updates,
+        antenna_updates
+    ) = request_to_updates(
+        request
+    )
+
+    # -----------------------------------------------------
+    # FREEZE CURRENT CONTEXT FOR THIS API ATTEMPT
+    # -----------------------------------------------------
+    #
+    # get_baseline_health() resolves the weather and traffic
+    # simulation clock once and refreshes the active observation.
+    # We then pass that exact pair into guarded_apply(), so the
+    # API baseline and controller baseline/candidate comparison
+    # are context-identical.
+    # -----------------------------------------------------
+
+    baseline_observation = controller.get_baseline_health()
+
+    attempt_weather = baseline_observation[
+        "weather"
+    ]
+
+    attempt_simulation_timestamp = baseline_observation[
+        "simulation_timestamp"
+    ]
+
+    baseline_snapshot = controller.get_active_snapshot()
+    baseline_sites = controller.get_active_sites()
+
+    result = controller.guarded_apply(
+        cell_updates=cell_updates,
+        antenna_updates=antenna_updates,
+        weather=attempt_weather,
+        simulation_timestamp=attempt_simulation_timestamp,
+    )
+
+    steps = [
+        {
+            "step": "External RAN adapter pre-check",
+            "status": "PASS",
+        },
+        *result["steps"],
+    ]
+
+    # -----------------------------------------------------
+    # ACTIVE RAN ALREADY UNSAFE -> BLOCK
+    # -----------------------------------------------------
+
+    if result["status"] == "BLOCKED":
+        return {
+            "status": "BLOCKED",
+            "reason": result["reason"],
+            "attempt_id": result["attempt_id"],
+            "previous_version": result["previous_version"],
+            "candidate_version": result["candidate_version"],
+            "active_version": result["active_version"],
+            "weather": result["weather"],
+            "simulation_timestamp": result[
+                "simulation_timestamp"
+            ],
+            "baseline_health": result["baseline_health"],
+            "baseline_service": result["baseline_service"],
+            "active_service": result["active_service"],
+            "candidate_evaluated": result[
+                "candidate_evaluated"
+            ],
+            "configuration_changed": result[
+                "configuration_changed"
+            ],
+            "steps": steps,
+            "precheck": precheck,
+            "candidate_config": None,
+        }
+
+    if result["status"] == "REJECTED":
+        raise HTTPException(
+            status_code=400,
+            detail=result.get(
+                "error",
+                "Candidate rejected",
+            ),
+        )
+
+    # -----------------------------------------------------
+    # CONFIG-ONLY CANDIDATE VIEW
+    # -----------------------------------------------------
+    #
+    # This runs only after the controller has passed baseline
+    # health and accepted the candidate input shape. It does
+    # not calculate RF in the API layer.
+    # -----------------------------------------------------
+
+    try:
+        candidate_sites_preview = build_candidate_sites(
+            base_sites=baseline_sites,
+            cell_updates=cell_updates,
+            antenna_updates=antenna_updates,
+        )
+
+        candidate_inventory_preview = (
+            build_configuration_inventory(
+                candidate_sites_preview
+            )
+        )
+
+    except ValueError as exc:
+        # Defensive only: the controller has already validated
+        # the same candidate input.
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    candidate_config = inventory_to_dashboard_config(
+        candidate_inventory_preview,
+        result["candidate_version"],
+    )
+
+    # =====================================================
+    # PASS -> ACTIVE CONFIGURATION CHANGED
+    # =====================================================
+
+    if result["status"] == "APPLIED":
+        active_snapshot = controller.get_active_snapshot()
+
+        validation = guardrails_to_validation(
+            result["guardrails"],
+            baseline_snapshot=baseline_snapshot,
+            candidate_cells=active_snapshot["cells"],
+        )
+
+        return {
+            "status": "APPLIED",
+            "attempt_id": result["attempt_id"],
+            "previous_version": result["previous_version"],
+            "candidate_version": result["candidate_version"],
+            "active_version": result["active_version"],
+            "weather": result["weather"],
+            "simulation_timestamp": result[
+                "simulation_timestamp"
+            ],
+            "baseline_health": result["baseline_health"],
+            "steps": steps,
+            "precheck": precheck,
+            "candidate_config": candidate_config,
+            "active_config": get_active_dashboard_config(),
+            "cells": normalized_cells_to_dashboard(
+                active_snapshot["cells"]
+            ),
+            "validation": validation,
+            "active_service": result["active_service"],
+            "guardrails": result["guardrails"],
+            "reassociation": result[
+                "guardrails"
+            ][
+                "reassociation"
+            ],
+            "candidate_evaluated": True,
+            "configuration_changed": True,
+        }
+
+    # =====================================================
+    # FAIL -> PREVIOUS KNOWN-GOOD REMAINS ACTIVE
+    # =====================================================
+
+    restored_snapshot = controller.get_active_snapshot()
+
+    failed_validation = guardrails_to_validation(
+        result["guardrails"]
+    )
+
+    # Use the controller's same-context rollback verification.
+    # Do NOT call get_current_validation() here because that
+    # could resolve newer weather or a newer traffic clock and
+    # contaminate the attempt evidence.
+    post_rollback_validation = guardrails_to_validation(
+        result["rollback_verification"],
+        baseline_snapshot=baseline_snapshot,
+        candidate_cells=restored_snapshot["cells"],
+    )
+
+    return {
+        "status": "ROLLED_BACK",
+        "attempt_id": result["attempt_id"],
+        "previous_version": result["previous_version"],
+        "candidate_version": result["candidate_version"],
+        "active_version": result["active_version"],
+        "weather": result["weather"],
+        "simulation_timestamp": result[
+            "simulation_timestamp"
+        ],
+        "baseline_health": result["baseline_health"],
+        "steps": steps,
+        "precheck": precheck,
+        "candidate_config": candidate_config,
+
+        # Candidate RF state is represented by authoritative
+        # candidate guardrails. It was never promoted.
+        "candidate_cells": [],
+        "failed_validation": failed_validation,
+        "post_rollback_validation": post_rollback_validation,
+        "candidate_service": result["candidate_service"],
+        "restored_service": result["restored_service"],
+        "guardrails": result["guardrails"],
+        "rollback_verification": result[
+            "rollback_verification"
+        ],
+        "reassociation": result[
+            "guardrails"
+        ][
+            "reassociation"
+        ],
+        "restored_cells": normalized_cells_to_dashboard(
+            restored_snapshot["cells"]
+        ),
+        "candidate_evaluated": True,
+        "configuration_changed": False,
+    }
+
+
+# =========================================================
+# RESTORE FACTORY BASELINE
+# =========================================================
+
+@app.post(
+    "/ran-config/restore-baseline"
+)
+def restore_factory_baseline():
+    result = controller.restore_factory_baseline()
+    snapshot = controller.get_active_snapshot()
+
+    validation = guardrails_to_validation(
+        result["baseline_health"]["guardrails"],
+        baseline_snapshot=snapshot,
+        candidate_cells=snapshot["cells"],
+    )
+
+    return {
+        "status": result["status"],
+        "previous_version": result["previous_version"],
+        "active_version": result["active_version"],
+        "weather": result["weather"],
+        "simulation_timestamp": result[
+            "simulation_timestamp"
+        ],
+        "baseline_health": result["baseline_health"],
+        "active_config": get_active_dashboard_config(),
+        "validation": validation,
+        "service": result["service"],
+    }
+
+
+# =========================================================
+# RETIRED LEGACY ENDPOINTS
+# =========================================================
+#
+# The previous implementation allowed direct KPI mutation:
+#
+#   /configuration?mode=degraded
+#   /rollback
+#   /rollout
+#
+# That bypassed the RF model and therefore no longer fits
+# the architecture.
+#
+# We keep explicit endpoints temporarily so callers receive
+# a clear explanation instead of an ambiguous HTTP 404.
+# =========================================================
+
+@app.post(
+    "/configuration"
+)
+def retired_configuration(
+    mode: str
+):
+
+    raise HTTPException(
+
+        status_code=410,
+
+        detail=(
+            "Legacy direct KPI injection has been removed. "
+            "Use /ran-config/evaluate and "
+            "/ran-config/guarded-apply."
+        )
+    )
+
+
+@app.post(
+    "/rollback"
+)
+def retired_manual_rollback():
+
+    raise HTTPException(
+
+        status_code=410,
+
+        detail=(
+            "Legacy manual KPI rollback has been removed. "
+            "Guarded RAN configuration rollback is handled "
+            "by RanAutomationController."
+        )
+    )
+
+
+@app.post(
+    "/rollout"
+)
+def retired_legacy_rollout():
+
+    raise HTTPException(
+
+        status_code=410,
+
+        detail=(
+            "Legacy hard-coded rollout regression has been "
+            "removed. Use the physical RAN configuration "
+            "guarded-apply workflow."
+        )
+    )
