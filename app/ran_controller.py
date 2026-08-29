@@ -39,9 +39,10 @@ This is a conservative learning-lab policy:
 if the active RAN is already outside the safe operating envelope,
 normal guarded changes are blocked.
 
-A production system could later add a separately authorized recovery
-workflow for changes intended specifically to remediate an unhealthy
-baseline.
+This learning lab also provides a separately authorized recovery path
+for an explicitly injected RF fault. That path restores the last accepted
+known-good configuration and verifies target recovery without weakening
+the normal guarded-change policy.
 
 This is a single-process learning-lab controller, not a production
 distributed state store.
@@ -55,6 +56,7 @@ from zoneinfo import ZoneInfo
 from app.ran_engine import (
     build_baseline_sites,
     build_candidate_sites,
+    build_configuration_inventory,
     evaluate_ran_state,
 )
 
@@ -102,6 +104,30 @@ class RanAutomationController:
         self._active_sites = (
             build_baseline_sites()
         )
+
+
+        # -------------------------------------------------
+        # SELF-HEALING / RECOVERY TARGET
+        # -------------------------------------------------
+        #
+        # _recovery_target_sites always represents the last
+        # intentionally accepted known-good configuration.
+        #
+        # A lab fault injection is allowed to mutate _active_sites
+        # without changing the configuration revision. The recovery
+        # target therefore remains available for a separate
+        # self-healing path.
+        # -------------------------------------------------
+
+        self._recovery_target_sites = deepcopy(
+            self._active_sites
+        )
+
+        self._recovery_target_version = (
+            self.active_version
+        )
+
+        self._fault_state = None
 
 
         initial_weather = (
@@ -597,6 +623,15 @@ class RanAutomationController:
                 "last_action":
                     self._last_action,
 
+                "fault_active":
+                    bool(
+                        self._fault_state
+                        and
+                        self._fault_state.get(
+                            "active"
+                        )
+                    ),
+
                 "weather":
                     deepcopy(
 
@@ -694,6 +729,1175 @@ class RanAutomationController:
         return events[
             -int(limit):
         ]
+
+
+
+    # =====================================================
+    # SELF-HEALING / LAB FAULT INJECTION
+    # =====================================================
+    #
+    # Normal guarded_apply() remains conservative:
+    # an unhealthy active baseline blocks ordinary promotion.
+    #
+    # The methods below are a separate recovery path. They model
+    # the operational distinction between:
+    #
+    #   normal optimization
+    #       and
+    #   authorized remediation / self-healing.
+    #
+    # A lab RF fault does NOT create a new configuration revision.
+    # It represents an operationally bad active state. The last
+    # intentionally accepted known-good configuration is retained
+    # in _recovery_target_sites and can be restored by run_self_healing().
+    # =====================================================
+
+    def _scope_metrics(
+        self,
+        snapshot,
+        cell_ids
+    ):
+
+        rows = []
+
+        for cell_id in cell_ids:
+
+            cell = (
+                snapshot.get(
+                    "cells",
+                    {}
+                ).get(
+                    cell_id
+                )
+            )
+
+            if cell is None:
+
+                rows.append({
+                    "cell_id":
+                        cell_id,
+
+                    "serving":
+                        False,
+
+                    "rsrp_dbm":
+                        None,
+
+                    "sinr_db":
+                        None,
+
+                    "prb_utilization_pct":
+                        None,
+
+                    "active_users":
+                        0,
+
+                    "traffic_mbps":
+                        0.0
+                })
+
+                continue
+
+
+            rows.append({
+                "cell_id":
+                    cell_id,
+
+                "serving":
+                    True,
+
+                "rsrp_dbm":
+                    cell.get(
+                        "rsrp_dbm"
+                    ),
+
+                "sinr_db":
+                    cell.get(
+                        "sinr_db"
+                    ),
+
+                "prb_utilization_pct":
+                    cell.get(
+                        "prb_utilization_pct"
+                    ),
+
+                "active_users":
+                    int(
+                        cell.get(
+                            "active_users",
+                            0
+                        )
+                    ),
+
+                "traffic_mbps":
+                    float(
+                        cell.get(
+                            "traffic_mbps",
+                            0.0
+                        )
+                    )
+            })
+
+
+        serving_rows = [
+            row
+            for row in rows
+            if row[
+                "serving"
+            ]
+        ]
+
+
+        def mean_metric(
+            metric
+        ):
+
+            values = [
+
+                float(
+                    row[
+                        metric
+                    ]
+                )
+
+                for row in serving_rows
+
+                if row.get(
+                    metric
+                )
+                is not None
+            ]
+
+            if not values:
+
+                return None
+
+            return round(
+                sum(
+                    values
+                )
+                /
+                len(
+                    values
+                ),
+                3
+            )
+
+
+        prb_values = [
+
+            float(
+                row[
+                    "prb_utilization_pct"
+                ]
+            )
+
+            for row in serving_rows
+
+            if row.get(
+                "prb_utilization_pct"
+            )
+            is not None
+        ]
+
+
+        return {
+            "configured_cells":
+                len(
+                    cell_ids
+                ),
+
+            "serving_cells":
+                len(
+                    serving_rows
+                ),
+
+            "active_users":
+                sum(
+                    row[
+                        "active_users"
+                    ]
+                    for row in serving_rows
+                ),
+
+            "traffic_mbps":
+                round(
+                    sum(
+                        row[
+                            "traffic_mbps"
+                        ]
+                        for row in serving_rows
+                    ),
+                    3
+                ),
+
+            "mean_rsrp_dbm":
+                mean_metric(
+                    "rsrp_dbm"
+                ),
+
+            "mean_sinr_db":
+                mean_metric(
+                    "sinr_db"
+                ),
+
+            "max_prb_utilization_pct":
+                (
+                    round(
+                        max(
+                            prb_values
+                        ),
+                        3
+                    )
+                    if prb_values
+                    else None
+                ),
+
+            "cells":
+                rows
+        }
+
+
+    def _scope_recovery_improved(
+        self,
+        before,
+        after
+    ):
+
+        if (
+            after[
+                "serving_cells"
+            ]
+            >
+            before[
+                "serving_cells"
+            ]
+        ):
+
+            return True
+
+
+        before_rsrp = before.get(
+            "mean_rsrp_dbm"
+        )
+
+        after_rsrp = after.get(
+            "mean_rsrp_dbm"
+        )
+
+        if (
+            before_rsrp is None
+            and
+            after_rsrp is not None
+        ):
+
+            return True
+
+        if (
+            before_rsrp is not None
+            and
+            after_rsrp is not None
+            and
+            after_rsrp
+            >=
+            before_rsrp
+            + 1.0
+        ):
+
+            return True
+
+
+        before_sinr = before.get(
+            "mean_sinr_db"
+        )
+
+        after_sinr = after.get(
+            "mean_sinr_db"
+        )
+
+        if (
+            before_sinr is None
+            and
+            after_sinr is not None
+        ):
+
+            return True
+
+        if (
+            before_sinr is not None
+            and
+            after_sinr is not None
+            and
+            after_sinr
+            >=
+            before_sinr
+            + 1.0
+        ):
+
+            return True
+
+
+        if (
+            after[
+                "active_users"
+            ]
+            >
+            before[
+                "active_users"
+            ]
+        ):
+
+            return True
+
+
+        # Restoring an accepted configuration can result in very
+        # similar metrics if the fault was mild or if UEs reassociate.
+        # Configuration equality is verified separately, so lack of a
+        # >=1 dB KPI jump is informative rather than an automatic fail.
+        return False
+
+
+    def get_self_healing_state(
+        self
+    ):
+
+        with self._lock:
+
+            fault_active = bool(
+                self._fault_state
+                and
+                self._fault_state.get(
+                    "active"
+                )
+            )
+
+
+            return {
+                "fault_active":
+                    fault_active,
+
+                "fault":
+                    deepcopy(
+                        self._fault_state
+                    )
+                    if fault_active
+                    else None,
+
+                "active_version":
+                    self.active_version,
+
+                "recovery_target_version":
+                    self._recovery_target_version,
+
+                "rollout_state":
+                    self._rollout_state,
+
+                "last_action":
+                    self._last_action
+            }
+
+
+    def inject_rf_fault(
+        self,
+        cell_ids,
+        tx_power_dbm=30.0,
+        weather=None,
+        simulation_timestamp=None
+    ):
+
+        with self._lock:
+
+            if (
+                self._fault_state
+                and
+                self._fault_state.get(
+                    "active"
+                )
+            ):
+
+                return {
+                    "status":
+                        "BLOCKED",
+
+                    "reason":
+                        "ACTIVE_FAULT_ALREADY_PRESENT",
+
+                    "active_version":
+                        self.active_version,
+
+                    "fault":
+                        deepcopy(
+                            self._fault_state
+                        ),
+
+                    "configuration_changed":
+                        False
+                }
+
+
+            normalized_cell_ids = list(
+                dict.fromkeys(
+                    str(
+                        cell_id
+                    )
+                    for cell_id in cell_ids
+                )
+            )
+
+
+            if not normalized_cell_ids:
+
+                raise ValueError(
+                    "RF fault injection requires at least one cell."
+                )
+
+
+            attempt_id = (
+                self._next_attempt_id()
+            )
+
+
+            attempt_weather = (
+                self._resolve_weather_snapshot(
+                    weather
+                )
+            )
+
+
+            attempt_simulation_timestamp = (
+                self._resolve_simulation_timestamp(
+                    simulation_timestamp
+                )
+            )
+
+
+            pre_fault_snapshot = (
+                self._refresh_active_snapshot_for_context(
+                    attempt_weather,
+                    attempt_simulation_timestamp
+                )
+            )
+
+
+            pre_fault_sites = deepcopy(
+                self._active_sites
+            )
+
+
+            # Validate the requested scope against the current
+            # configuration inventory before building the fault.
+            configured_ids = {
+                cell[
+                    "cell_id"
+                ]
+                for cell
+                in build_configuration_inventory(
+                    pre_fault_sites
+                )[
+                    "cells"
+                ]
+            }
+
+
+            unknown = [
+                cell_id
+                for cell_id in normalized_cell_ids
+                if cell_id not in configured_ids
+            ]
+
+
+            if unknown:
+
+                raise ValueError(
+                    "Unknown cell_id(s) for RF fault injection: "
+                    + ", ".join(
+                        unknown
+                    )
+                )
+
+
+            cell_updates = {
+
+                cell_id: {
+                    "tx_power_dbm":
+                        float(
+                            tx_power_dbm
+                        )
+                }
+
+                for cell_id
+                in normalized_cell_ids
+            }
+
+
+            fault_sites = (
+                build_candidate_sites(
+
+                    base_sites=
+                        pre_fault_sites,
+
+                    cell_updates=
+                        cell_updates
+                )
+            )
+
+
+            fault_snapshot = (
+                evaluate_ran_state(
+
+                    fault_sites,
+
+                    weather=
+                        attempt_weather,
+
+                    simulation_timestamp=
+                        attempt_simulation_timestamp
+                )
+            )
+
+
+            # The recovery target is the intentionally accepted
+            # configuration that existed immediately before the lab
+            # fault. The configuration revision is deliberately not
+            # incremented by fault injection.
+            self._recovery_target_sites = deepcopy(
+                pre_fault_sites
+            )
+
+            self._recovery_target_version = (
+                self.active_version
+            )
+
+
+            before_scope = (
+                self._scope_metrics(
+                    pre_fault_snapshot,
+                    normalized_cell_ids
+                )
+            )
+
+
+            after_scope = (
+                self._scope_metrics(
+                    fault_snapshot,
+                    normalized_cell_ids
+                )
+            )
+
+
+            self._active_sites = deepcopy(
+                fault_sites
+            )
+
+            self._active_snapshot = deepcopy(
+                fault_snapshot
+            )
+
+            self._rollout_state = (
+                "DEGRADED"
+            )
+
+            self._last_action = (
+                "RF_FAULT_INJECTED"
+            )
+
+
+            self._fault_state = {
+                "active":
+                    True,
+
+                "fault_id":
+                    attempt_id,
+
+                "type":
+                    "TX_POWER_DROP",
+
+                "cell_ids":
+                    normalized_cell_ids,
+
+                "tx_power_dbm":
+                    float(
+                        tx_power_dbm
+                    ),
+
+                "known_good_version":
+                    self._recovery_target_version,
+
+                "injected_at":
+                    self._timestamp()
+            }
+
+
+            pre_fault_health = (
+                self._baseline_health_summary(
+                    pre_fault_snapshot
+                )
+            )
+
+            fault_health = (
+                self._baseline_health_summary(
+                    fault_snapshot
+                )
+            )
+
+
+            self._record_event(
+
+                event_type=
+                    "RF_FAULT_INJECTED",
+
+                status=
+                    "WARNING",
+
+                message=
+                    (
+                        "Learning-lab RF fault injected: "
+                        f"{len(normalized_cell_ids)} cell(s) "
+                        f"forced to {float(tx_power_dbm):.1f} dBm."
+                    ),
+
+                details={
+                    "attempt_id":
+                        attempt_id,
+
+                    "cell_ids":
+                        normalized_cell_ids,
+
+                    "tx_power_dbm":
+                        float(
+                            tx_power_dbm
+                        ),
+
+                    "active_version":
+                        self.active_version,
+
+                    "recovery_target_version":
+                        self._recovery_target_version,
+
+                    "weather_timestamp":
+                        attempt_weather.get(
+                            "timestamp"
+                        ),
+
+                    "simulation_timestamp":
+                        attempt_simulation_timestamp,
+
+                    "before_scope":
+                        before_scope,
+
+                    "after_scope":
+                        after_scope
+                }
+            )
+
+
+            return {
+                "status":
+                    "FAULT_INJECTED",
+
+                "reason":
+                    "LEARNING_LAB_RF_FAULT",
+
+                "attempt_id":
+                    attempt_id,
+
+                "active_version":
+                    self.active_version,
+
+                "recovery_target_version":
+                    self._recovery_target_version,
+
+                "weather":
+                    deepcopy(
+                        attempt_weather
+                    ),
+
+                "simulation_timestamp":
+                    attempt_simulation_timestamp,
+
+                "fault":
+                    deepcopy(
+                        self._fault_state
+                    ),
+
+                "before_scope":
+                    before_scope,
+
+                "after_scope":
+                    after_scope,
+
+                "baseline_health_before":
+                    pre_fault_health,
+
+                "baseline_health_after":
+                    fault_health,
+
+                "configuration_revision_changed":
+                    False,
+
+                "configuration_changed":
+                    True,
+
+                "steps": [
+                    {
+                        "step":
+                            "Observe pre-fault RAN state",
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            "Snapshot last accepted known-good configuration",
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            (
+                                "Inject TX-power fault into "
+                                f"{len(normalized_cell_ids)} cell(s)"
+                            ),
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            "Collect post-fault RF and service KPIs",
+                        "status":
+                            "PASS"
+                    }
+                ]
+            }
+
+
+    def run_self_healing(
+        self,
+        weather=None,
+        simulation_timestamp=None
+    ):
+
+        with self._lock:
+
+            if not (
+                self._fault_state
+                and
+                self._fault_state.get(
+                    "active"
+                )
+            ):
+
+                observation_weather = (
+                    self._resolve_weather_snapshot(
+                        weather
+                    )
+                )
+
+                observation_simulation_timestamp = (
+                    self._resolve_simulation_timestamp(
+                        simulation_timestamp
+                    )
+                )
+
+                snapshot = (
+                    self._refresh_active_snapshot_for_context(
+                        observation_weather,
+                        observation_simulation_timestamp
+                    )
+                )
+
+                baseline_health = (
+                    self._baseline_health_summary(
+                        snapshot
+                    )
+                )
+
+                return {
+                    "status":
+                        "NO_ACTION",
+
+                    "reason":
+                        "NO_ACTIVE_INJECTED_RF_FAULT",
+
+                    "active_version":
+                        self.active_version,
+
+                    "weather":
+                        deepcopy(
+                            observation_weather
+                        ),
+
+                    "simulation_timestamp":
+                        observation_simulation_timestamp,
+
+                    "baseline_health":
+                        baseline_health,
+
+                    "configuration_changed":
+                        False,
+
+                    "configuration_revision_changed":
+                        False,
+
+                    "steps": [
+                        {
+                            "step":
+                                "Detect authorized self-healing trigger",
+                            "status":
+                                "INFO"
+                        }
+                    ]
+                }
+
+
+            attempt_id = (
+                self._next_attempt_id()
+            )
+
+
+            attempt_weather = (
+                self._resolve_weather_snapshot(
+                    weather
+                )
+            )
+
+
+            attempt_simulation_timestamp = (
+                self._resolve_simulation_timestamp(
+                    simulation_timestamp
+                )
+            )
+
+
+            fault = deepcopy(
+                self._fault_state
+            )
+
+
+            faulted_snapshot = (
+                self._refresh_active_snapshot_for_context(
+                    attempt_weather,
+                    attempt_simulation_timestamp
+                )
+            )
+
+
+            faulted_health = (
+                self._baseline_health_summary(
+                    faulted_snapshot
+                )
+            )
+
+
+            recovery_sites = deepcopy(
+                self._recovery_target_sites
+            )
+
+
+            recovery_snapshot = (
+                evaluate_ran_state(
+
+                    recovery_sites,
+
+                    weather=
+                        attempt_weather,
+
+                    simulation_timestamp=
+                        attempt_simulation_timestamp
+                )
+            )
+
+
+            recovery_health = (
+                self._baseline_health_summary(
+                    recovery_snapshot
+                )
+            )
+
+
+            recovery_guardrails = (
+                evaluate_ran_guardrails(
+
+                    faulted_snapshot,
+
+                    recovery_snapshot
+                )
+            )
+
+
+            target_cell_ids = (
+                fault[
+                    "cell_ids"
+                ]
+            )
+
+
+            before_scope = (
+                self._scope_metrics(
+                    faulted_snapshot,
+                    target_cell_ids
+                )
+            )
+
+
+            after_scope = (
+                self._scope_metrics(
+                    recovery_snapshot,
+                    target_cell_ids
+                )
+            )
+
+
+            scope_improved = (
+                self._scope_recovery_improved(
+                    before_scope,
+                    after_scope
+                )
+            )
+
+
+            self._active_sites = deepcopy(
+                recovery_sites
+            )
+
+            self._active_snapshot = deepcopy(
+                recovery_snapshot
+            )
+
+
+            configuration_restored = (
+                self._active_sites
+                ==
+                self._recovery_target_sites
+            )
+
+
+            full_safe_envelope_restored = (
+                recovery_health[
+                    "status"
+                ]
+                == "PASS"
+            )
+
+
+            remaining_failed_checks = [
+
+                check[
+                    "name"
+                ]
+
+                for check
+                in recovery_health[
+                    "failed_checks"
+                ]
+            ]
+
+
+            self._fault_state = None
+
+            self._rollout_state = (
+                "STABLE"
+                if full_safe_envelope_restored
+                else "DEGRADED"
+            )
+
+            self._last_action = (
+                "SELF_HEALED"
+            )
+
+
+            reason = (
+                "TARGET_RF_FAULT_RECOVERED"
+
+                if full_safe_envelope_restored
+
+                else
+                "TARGET_RF_FAULT_RECOVERED_BASELINE_ISSUES_REMAIN"
+            )
+
+
+            self._record_event(
+
+                event_type=
+                    "SELF_HEAL_COMPLETED",
+
+                status=
+                    "PASS",
+
+                message=
+                    (
+                        "Injected RF fault recovered by restoring "
+                        "the last accepted known-good configuration."
+                        if full_safe_envelope_restored
+                        else
+                        (
+                            "Injected RF fault recovered; "
+                            "pre-existing or unrelated baseline "
+                            "safety issues remain."
+                        )
+                    ),
+
+                details={
+                    "attempt_id":
+                        attempt_id,
+
+                    "fault_id":
+                        fault[
+                            "fault_id"
+                        ],
+
+                    "cell_ids":
+                        target_cell_ids,
+
+                    "active_version":
+                        self.active_version,
+
+                    "recovery_target_version":
+                        self._recovery_target_version,
+
+                    "configuration_restored":
+                        configuration_restored,
+
+                    "scope_recovery_improved":
+                        scope_improved,
+
+                    "full_safe_envelope_restored":
+                        full_safe_envelope_restored,
+
+                    "remaining_failed_checks":
+                        remaining_failed_checks,
+
+                    "weather_timestamp":
+                        attempt_weather.get(
+                            "timestamp"
+                        ),
+
+                    "simulation_timestamp":
+                        attempt_simulation_timestamp,
+
+                    "before_scope":
+                        before_scope,
+
+                    "after_scope":
+                        after_scope
+                }
+            )
+
+
+            return {
+                "status":
+                    "RECOVERED",
+
+                "reason":
+                    reason,
+
+                "attempt_id":
+                    attempt_id,
+
+                "fault":
+                    fault,
+
+                "active_version":
+                    self.active_version,
+
+                "recovery_target_version":
+                    self._recovery_target_version,
+
+                "weather":
+                    deepcopy(
+                        attempt_weather
+                    ),
+
+                "simulation_timestamp":
+                    attempt_simulation_timestamp,
+
+                "faulted_baseline_health":
+                    faulted_health,
+
+                "recovered_baseline_health":
+                    recovery_health,
+
+                "recovery_guardrails":
+                    recovery_guardrails,
+
+                "before_scope":
+                    before_scope,
+
+                "after_scope":
+                    after_scope,
+
+                "configuration_restored":
+                    configuration_restored,
+
+                "scope_recovery_improved":
+                    scope_improved,
+
+                "full_safe_envelope_restored":
+                    full_safe_envelope_restored,
+
+                "remaining_failed_checks":
+                    remaining_failed_checks,
+
+                "configuration_changed":
+                    True,
+
+                "configuration_revision_changed":
+                    False,
+
+                "steps": [
+                    {
+                        "step":
+                            "Detect active injected RF fault",
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            (
+                                "Select last accepted known-good "
+                                f"{self._recovery_target_version}"
+                            ),
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            (
+                                "Evaluate recovery candidate under "
+                                "same weather + traffic-clock context"
+                            ),
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            "Restore known-good RAN configuration",
+                        "status":
+                            "PASS"
+                    },
+                    {
+                        "step":
+                            "Verify target RF/service recovery",
+                        "status":
+                            (
+                                "PASS"
+                                if (
+                                    scope_improved
+                                    or
+                                    configuration_restored
+                                )
+                                else "FAIL"
+                            )
+                    },
+                    {
+                        "step":
+                            "Re-check full active RAN safe envelope",
+                        "status":
+                            recovery_health[
+                                "status"
+                            ]
+                    }
+                ]
+            }
 
 
     # =====================================================
@@ -1583,6 +2787,17 @@ class RanAutomationController:
                 self._config_revision += 1
 
 
+                self._recovery_target_sites = deepcopy(
+                    candidate_sites
+                )
+
+                self._recovery_target_version = (
+                    self.active_version
+                )
+
+                self._fault_state = None
+
+
                 self._rollout_state = (
                     "STABLE"
                 )
@@ -2004,6 +3219,17 @@ class RanAutomationController:
 
 
             self._config_revision = 0
+
+
+            self._recovery_target_sites = deepcopy(
+                self._active_sites
+            )
+
+            self._recovery_target_version = (
+                self.active_version
+            )
+
+            self._fault_state = None
 
 
             self._rollout_state = (

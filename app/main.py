@@ -16,7 +16,7 @@ traffic / UE association
         â†“
 guardrails
         â†“
-BLOCK / PROMOTE / ROLLBACK
+BLOCK / PROMOTE / ROLLBACK / SELF-HEAL
 
 The API deliberately does not calculate RF KPIs itself.
 
@@ -72,7 +72,7 @@ app = FastAPI(
         "RAN Automation Delivery & Resilience Lab",
 
     version=
-        "2.0"
+        "2.1"
 )
 
 
@@ -88,7 +88,7 @@ ENVIRONMENT_NAME = os.getenv(
 
 APPLICATION_RELEASE = os.getenv(
     "APPLICATION_RELEASE",
-    "APP-v2.0"
+    "APP-v2.1"
 )
 
 
@@ -184,6 +184,23 @@ class CandidateConfigRequest(BaseModel):
         AntennaConfigUpdate
     ] = Field(
         default_factory=dict
+    )
+
+
+class RfFaultInjectionRequest(BaseModel):
+
+    site_id: str = Field(
+        default="SITE-JESENICE-01"
+    )
+
+    band: str = Field(
+        default="n78"
+    )
+
+    tx_power_dbm: float = Field(
+        default=30.0,
+        ge=MIN_TX_POWER_DBM,
+        le=MAX_TX_POWER_DBM
     )
 
 
@@ -1446,7 +1463,27 @@ def get_status():
         ],
         "baseline_health": baseline_health,
         "service": observation["service"],
+        "self_healing": controller.get_self_healing_state(),
     }
+
+
+# =========================================================
+# SELF-HEALING STATE
+# =========================================================
+
+@app.get(
+    "/self-healing/status"
+)
+def get_self_healing_status():
+    """
+    Return non-mutating recovery state.
+
+    Normal guarded changes and recovery are intentionally separate:
+    an unhealthy baseline blocks ordinary promotion, while an active
+    injected learning-lab RF fault authorizes the recovery workflow.
+    """
+
+    return controller.get_self_healing_state()
 
 
 @app.get(
@@ -2220,6 +2257,145 @@ def guarded_apply_candidate(
         ),
         "candidate_evaluated": True,
         "configuration_changed": False,
+    }
+
+
+# =========================================================
+# LEARNING-LAB RF FAULT INJECTION
+# =========================================================
+#
+# Fault injection is deliberately separate from configuration
+# promotion. It simulates an operational RF degradation without
+# incrementing the accepted configuration revision.
+# =========================================================
+
+@app.post(
+    "/self-healing/inject-rf-fault"
+)
+def inject_rf_fault(
+    request: RfFaultInjectionRequest
+):
+
+    inventory = build_configuration_inventory(
+        controller.get_active_sites()
+    )
+
+    cell_ids = [
+        cell["cell_id"]
+        for cell in inventory["cells"]
+        if (
+            cell["site_id"] == request.site_id
+            and
+            cell["band"] == request.band
+            and
+            cell.get("enabled", True)
+        )
+    ]
+
+    if not cell_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No enabled cells match fault-injection scope: "
+                f"site={request.site_id}, band={request.band}"
+            ),
+        )
+
+    try:
+        result = controller.inject_rf_fault(
+            cell_ids=cell_ids,
+            tx_power_dbm=request.tx_power_dbm,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    snapshot = controller.get_active_snapshot()
+
+    return {
+        **result,
+        "site_id": request.site_id,
+        "band": request.band,
+        "cell_ids": cell_ids,
+        "active_config": get_active_dashboard_config(),
+        "cells": normalized_cells_to_dashboard(
+            snapshot["cells"]
+        ),
+        "self_healing": controller.get_self_healing_state(),
+    }
+
+
+# =========================================================
+# SELF-HEALING / RECOVERY
+# =========================================================
+#
+# This is a separately authorized remediation path. It does not
+# weaken guarded_apply(): normal configuration promotion remains
+# fail-closed when the active baseline is already unhealthy.
+#
+# For a recovery attempt we freeze the same weather + traffic-clock
+# context and restore the last intentionally accepted known-good
+# configuration. Target RF recovery is verified separately from the
+# full-network safe-envelope result so unrelated capacity alarms are
+# not falsely reported as repaired.
+# =========================================================
+
+@app.post(
+    "/self-healing/run"
+)
+def run_self_healing():
+
+    precheck = run_precheck_data()
+
+    if precheck["status"] != "PASS":
+        return {
+            "status": "BLOCKED",
+            "reason": "EXTERNAL_PRECHECK_FAILED",
+            "active_version": controller.get_active_state()[
+                "active_version"
+            ],
+            "configuration_changed": False,
+            "configuration_revision_changed": False,
+            "precheck": precheck,
+            "steps": [
+                {
+                    "step": "External RAN adapter pre-check",
+                    "status": "FAIL",
+                }
+            ],
+        }
+
+    # Freeze exactly one environment + traffic context pair for the
+    # recovery attempt, just as guarded_apply() does.
+    observation = controller.get_baseline_health()
+
+    result = controller.run_self_healing(
+        weather=observation["weather"],
+        simulation_timestamp=observation[
+            "simulation_timestamp"
+        ],
+    )
+
+    snapshot = controller.get_active_snapshot()
+
+    return {
+        **result,
+        "precheck": precheck,
+        "steps": [
+            {
+                "step": "External RAN adapter pre-check",
+                "status": "PASS",
+            },
+            *result.get("steps", []),
+        ],
+        "active_config": get_active_dashboard_config(),
+        "cells": normalized_cells_to_dashboard(
+            snapshot["cells"]
+        ),
+        "self_healing": controller.get_self_healing_state(),
     }
 
 

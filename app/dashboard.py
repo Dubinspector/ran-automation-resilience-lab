@@ -660,6 +660,11 @@ button:hover {
     opacity: 0.85;
 }
 
+button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
 .btn-evaluate {
     background: #2563eb;
 }
@@ -674,6 +679,77 @@ button:hover {
 
 .btn-refresh {
     background: #475569;
+}
+
+.btn-fault {
+    background: #b45309;
+}
+
+.btn-heal {
+    background: #0f766e;
+}
+
+.self-heal-panel {
+    margin-top: 16px;
+
+    padding: 16px;
+
+    background: #132238;
+
+    border:
+        1px solid #3b82f6;
+
+    border-radius: 9px;
+}
+
+.self-heal-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(210px, 1fr)
+        );
+
+    gap: 12px;
+
+    margin-top: 12px;
+}
+
+.self-heal-field {
+    min-width: 0;
+
+    padding: 11px;
+
+    background: rgba(15, 23, 42, 0.7);
+
+    border: 1px solid #334155;
+
+    border-radius: 7px;
+}
+
+.self-heal-field label {
+    display: block;
+
+    margin-bottom: 6px;
+
+    color: #94a3b8;
+
+    font-size: 11px;
+
+    text-transform: uppercase;
+}
+
+.self-heal-value {
+    min-width: 0;
+
+    overflow-wrap: anywhere;
+
+    font-weight: bold;
+}
+
+.self-heal-actions {
+    margin-top: 12px;
 }
 
 
@@ -783,18 +859,35 @@ button:hover {
 
     grid-template-columns:
         90px
-        150px
-        90px
-        1fr;
+        minmax(220px, 280px)
+        105px
+        minmax(0, 1fr);
 
-    gap: 9px;
+    gap: 14px;
 
     padding: 8px 0;
 
     border-bottom:
         1px solid #334155;
 
+    align-items: start;
+
     font-size: 13px;
+}
+
+.event > div {
+    min-width: 0;
+}
+
+.event-type,
+.event-message {
+    overflow-wrap: anywhere;
+
+    word-break: normal;
+}
+
+.event-status {
+    min-width: 0;
 }
 
 .event:last-child {
@@ -913,7 +1006,7 @@ summary {
     observe the active RAN and environmental context,
     configure a synthetic candidate,
     evaluate RF and traffic impact,
-    then promote, roll back, or block according to network guardrails.
+    then promote, roll back, block, or run an explicitly authorized recovery workflow.
 </p>
 
 </header>
@@ -1296,7 +1389,7 @@ summary {
     </div>
 
     <div class="arch-step">
-        PROMOTE / ROLLBACK / BLOCK
+        PROMOTE / ROLLBACK / BLOCK / SELF-HEAL
     </div>
 
 </div>
@@ -1328,7 +1421,7 @@ locations or production policy.
 
         <select
             id="site-filter"
-            onchange="renderWorkingView()"
+            onchange="renderWorkingView(); updateSelfHealingScope()"
         >
         </select>
 
@@ -1446,28 +1539,28 @@ locations or production policy.
 
 <button
     class="btn-evaluate"
-    onclick="evaluateCandidate()"
+    onclick="withOperationLock(evaluateCandidate)"
 >
     Evaluate Candidate
 </button>
 
 <button
     class="btn-apply"
-    onclick="guardedApply()"
+    onclick="withOperationLock(guardedApply)"
 >
     Guarded Apply
 </button>
 
 <button
     class="btn-reset"
-    onclick="restoreBaseline()"
+    onclick="withOperationLock(restoreBaseline)"
 >
     Restore Factory Baseline
 </button>
 
 <button
     class="btn-refresh"
-    onclick="loadEverything()"
+    onclick="withOperationLock(loadEverything)"
 >
     Refresh
 </button>
@@ -1481,6 +1574,85 @@ Evaluate is preview-only.
 
 Guarded Apply promotes only when the resulting
 network state passes the guardrails.
+
+</div>
+
+</div>
+
+
+<div class="self-heal-panel">
+
+<h3>
+    Self-Healing / Recovery Demo
+</h3>
+
+<div class="section-note">
+    Normal Guarded Apply stays fail-closed when the active RAN is already
+    outside the safe envelope. This separate learning-lab path injects an
+    RF fault, keeps the accepted configuration revision unchanged, then
+    restores the last accepted known-good configuration and verifies the
+    target RF/service recovery under one fixed weather + traffic-clock
+    context. Unrelated capacity alarms remain visible.
+</div>
+
+<div class="self-heal-grid">
+
+    <div class="self-heal-field">
+        <label>Fault Scope</label>
+        <div
+            id="self-heal-scope"
+            class="self-heal-value"
+        >
+            Loading...
+        </div>
+    </div>
+
+    <div class="self-heal-field">
+        <label>Injected TX Power</label>
+        <div class="self-heal-value">
+            <input
+                id="fault-tx-power"
+                type="number"
+                min="30"
+                max="49"
+                step="1"
+                value="30"
+            >
+            dBm
+        </div>
+    </div>
+
+    <div class="self-heal-field">
+        <label>Recovery State</label>
+        <div
+            id="self-heal-state"
+            class="self-heal-value"
+        >
+            Loading...
+        </div>
+    </div>
+
+</div>
+
+<div class="self-heal-actions">
+
+    <button
+        class="btn-fault"
+        onclick="withOperationLock(injectRfFault)"
+    >
+        Inject RF Fault
+    </button>
+
+    <button
+        class="btn-heal"
+        onclick="withOperationLock(runSelfHealing)"
+    >
+        Run Self-Healing
+    </button>
+
+    <span class="muted" style="font-size:12px">
+        Demo scope: all enabled n78 cells on the selected working site.
+    </span>
 
 </div>
 
@@ -1717,6 +1889,8 @@ let lastStatusSnapshot = null;
 
 let contextRefreshInFlight = false;
 
+let operationInFlight = false;
+
 const LIVE_CONTEXT_REFRESH_MS =
     60 * 1000;
 
@@ -1757,6 +1931,46 @@ async function api(
 /* GENERAL HELPERS */
 /* ===================================================== */
 
+function setOperationBusy(
+    busy
+) {
+
+    document
+        .querySelectorAll(
+            "button"
+        )
+        .forEach(
+            button => {
+                button.disabled = busy;
+            }
+        );
+}
+
+
+async function withOperationLock(
+    action
+) {
+
+    if (
+        operationInFlight
+    ) {
+        return;
+    }
+
+    operationInFlight = true;
+    setOperationBusy(true);
+
+    try {
+        await action();
+    }
+
+    finally {
+        operationInFlight = false;
+        setOperationBusy(false);
+    }
+}
+
+
 function badge(
     status
 ) {
@@ -1771,6 +1985,10 @@ function badge(
         status === "STABLE"
         ||
         status === "LIVE"
+        ||
+        status === "RECOVERED"
+        ||
+        status === "SELF_HEALED"
     ) {
 
         return `
@@ -1791,6 +2009,10 @@ function badge(
         status === "STALE_LAST_KNOWN"
         ||
         status === "FALLBACK"
+        ||
+        status === "FAULT_INJECTED"
+        ||
+        status === "BLOCKED"
     ) {
 
         return `
@@ -1809,6 +2031,8 @@ function badge(
         status === "FIXED"
         ||
         status === "EVALUATED"
+        ||
+        status === "NO_ACTION"
     ) {
 
         return `
@@ -2368,6 +2592,20 @@ async function loadStatus() {
 
 
     if (
+        status.self_healing
+        &&
+        status.self_healing.fault_active
+    ) {
+
+        banner.className =
+            "banner banner-warning";
+
+
+        banner.textContent =
+            "LEARNING-LAB RF FAULT ACTIVE - SELF-HEAL AVAILABLE";
+    }
+
+    else if (
         status.baseline_health
         &&
         status.baseline_health.status
@@ -2445,6 +2683,8 @@ async function loadRanConfig() {
 
 
     renderWorkingView();
+
+    updateSelfHealingScope();
 }
 
 
@@ -5307,6 +5547,442 @@ async function restoreBaseline() {
 
 
 /* ===================================================== */
+/* SELF-HEALING / RECOVERY DEMO */
+/* ===================================================== */
+
+function updateSelfHealingScope() {
+
+    const target =
+        document.getElementById(
+            "self-heal-scope"
+        );
+
+
+    if (
+        !target
+        ||
+        !ranConfigData
+    ) {
+        return;
+    }
+
+
+    const siteId =
+        selectedSite();
+
+
+    const cells =
+        Object.entries(
+            ranConfigData.active.cells
+        )
+        .filter(
+            ([cellId, config]) => (
+                config.site_id === siteId
+                &&
+                config.band === "n78"
+                &&
+                config.enabled !== false
+            )
+        );
+
+
+    target.textContent =
+        `${siteId} / n78 / ${cells.length} cell(s)`;
+}
+
+
+async function loadSelfHealingState() {
+
+    const state =
+        await api(
+            "/self-healing/status"
+        );
+
+
+    const target =
+        document.getElementById(
+            "self-heal-state"
+        );
+
+
+    if (!target) {
+        return state;
+    }
+
+
+    if (
+        state.fault_active
+    ) {
+
+        const fault =
+            state.fault
+            || {};
+
+
+        target.innerHTML =
+            `${badge("FAULT_INJECTED")} `
+            + `${displayValue(fault.type)} / `
+            + `${(fault.cell_ids || []).length} cell(s) / `
+            + `recover ${state.recovery_target_version}`;
+    }
+
+    else {
+
+        target.innerHTML =
+            `${badge("STABLE")} no injected RF fault`;
+    }
+
+
+    return state;
+}
+
+
+function renderWorkflowSteps(
+    steps
+) {
+
+    const workflow =
+        document.getElementById(
+            "workflow"
+        );
+
+
+    if (
+        !Array.isArray(steps)
+        ||
+        steps.length === 0
+    ) {
+
+        workflow.classList.add(
+            "hidden"
+        );
+
+        workflow.innerHTML = "";
+
+        return;
+    }
+
+
+    workflow.classList.remove(
+        "hidden"
+    );
+
+    workflow.innerHTML = "";
+
+
+    steps.forEach(
+        (step, index) => {
+
+            workflow.innerHTML += `
+                <div class="workflow-row">
+                    <div>${index + 1}</div>
+                    <div>${step.step}</div>
+                    <div>${badge(step.status)}</div>
+                </div>
+            `;
+        }
+    );
+}
+
+
+function metricTransition(
+    before,
+    after,
+    unit = ""
+) {
+
+    return (
+        `${displayValue(before)}${before === null || before === undefined ? "" : unit}`
+        + " → "
+        + `${displayValue(after)}${after === null || after === undefined ? "" : unit}`
+    );
+}
+
+
+async function injectRfFault() {
+
+    try {
+
+        const siteId =
+            selectedSite();
+
+
+        const txPower =
+            Number(
+                document.getElementById(
+                    "fault-tx-power"
+                ).value
+            );
+
+
+        const result =
+            await api(
+                "/self-healing/inject-rf-fault",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body: JSON.stringify({
+                        site_id: siteId,
+                        band: "n78",
+                        tx_power_dbm: txPower
+                    })
+                }
+            );
+
+
+        showRaw(result);
+
+
+        const panel =
+            document.getElementById(
+                "decision-panel"
+            );
+
+
+        if (
+            result.status === "BLOCKED"
+        ) {
+            panel.className =
+                "decision-panel decision-warning";
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                "RF FAULT INJECTION BLOCKED";
+        }
+        else {
+            panel.className =
+                "decision-panel decision-warning";
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                "RF FAULT INJECTED - SELF-HEAL AVAILABLE";
+        }
+
+
+        const before =
+            result.before_scope
+            || {};
+
+        const after =
+            result.after_scope
+            || {};
+
+
+        document.getElementById(
+            "decision-summary"
+        ).innerHTML = `
+            <div class="decision-item">
+                Status
+                <strong>${badge(result.status)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Scope
+                <strong>${result.site_id || siteId} / ${result.band || "n78"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Target Cells
+                <strong>${(result.cell_ids || []).length}</strong>
+            </div>
+
+            <div class="decision-item">
+                Forced TX
+                <strong>${txPower} dBm</strong>
+            </div>
+
+            <div class="decision-item">
+                Serving Cells
+                <strong>${metricTransition(before.serving_cells, after.serving_cells)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Mean RSRP
+                <strong>${metricTransition(before.mean_rsrp_dbm, after.mean_rsrp_dbm, " dBm")}</strong>
+            </div>
+
+            <div class="decision-item">
+                Mean SINR
+                <strong>${metricTransition(before.mean_sinr_db, after.mean_sinr_db, " dB")}</strong>
+            </div>
+
+            <div class="decision-item">
+                Active UE on Scope
+                <strong>${metricTransition(before.active_users, after.active_users)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Accepted Config Revision
+                <strong>${result.active_version || "-"} / UNCHANGED</strong>
+            </div>
+        `;
+
+
+        renderWorkflowSteps(
+            result.steps
+        );
+
+        hideCandidateSections();
+
+        await refreshAfterOperation();
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    }
+
+    catch (error) {
+        showError(error);
+    }
+}
+
+
+async function runSelfHealing() {
+
+    try {
+
+        const result =
+            await api(
+                "/self-healing/run",
+                {
+                    method: "POST"
+                }
+            );
+
+
+        showRaw(result);
+
+
+        const panel =
+            document.getElementById(
+                "decision-panel"
+            );
+
+
+        if (
+            result.status === "RECOVERED"
+        ) {
+
+            panel.className =
+                result.full_safe_envelope_restored
+                ? "decision-panel decision-pass"
+                : "decision-panel decision-warning";
+
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                result.full_safe_envelope_restored
+                ? "SELF-HEAL COMPLETED - ACTIVE RAN RECOVERED"
+                : "RF FAULT RECOVERED - BASELINE CAPACITY ISSUE REMAINS";
+        }
+
+        else {
+
+            panel.className =
+                "decision-panel decision-warning";
+
+
+            document.getElementById(
+                "decision-headline"
+            ).textContent =
+                result.status === "NO_ACTION"
+                ? "SELF-HEAL: NO ACTIVE INJECTED RF FAULT"
+                : "SELF-HEAL BLOCKED";
+        }
+
+
+        const before =
+            result.before_scope
+            || {};
+
+        const after =
+            result.after_scope
+            || {};
+
+
+        document.getElementById(
+            "decision-summary"
+        ).innerHTML = `
+            <div class="decision-item">
+                Status
+                <strong>${badge(result.status)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Reason
+                <strong>${result.reason || "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Active Config
+                <strong>${result.active_version || "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Config Restored
+                <strong>${result.configuration_restored === true ? "YES" : result.configuration_restored === false ? "NO" : "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Mean RSRP
+                <strong>${metricTransition(before.mean_rsrp_dbm, after.mean_rsrp_dbm, " dBm")}</strong>
+            </div>
+
+            <div class="decision-item">
+                Mean SINR
+                <strong>${metricTransition(before.mean_sinr_db, after.mean_sinr_db, " dB")}</strong>
+            </div>
+
+            <div class="decision-item">
+                Active UE on Scope
+                <strong>${metricTransition(before.active_users, after.active_users)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Target Recovery Improved
+                <strong>${result.scope_recovery_improved === true ? "YES" : result.scope_recovery_improved === false ? "NO / CONFIG VERIFIED" : "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Full Safe Envelope
+                <strong>${result.full_safe_envelope_restored === true ? badge("PASS") : result.full_safe_envelope_restored === false ? badge("FAIL") : "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Remaining Findings
+                <strong>${(result.remaining_failed_checks || []).join(", ") || "NONE"}</strong>
+            </div>
+        `;
+
+
+        renderWorkflowSteps(
+            result.steps
+        );
+
+        hideCandidateSections();
+
+        await refreshAfterOperation();
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    }
+
+    catch (error) {
+        showError(error);
+    }
+}
+
+
+/* ===================================================== */
 /* EVENTS */
 /* ===================================================== */
 
@@ -5385,7 +6061,7 @@ async function loadEvents() {
                 ${time}
             </div>
 
-            <div>
+            <div class="event-type">
                 <b>
                     ${event.type}
                 </b>
@@ -5552,7 +6228,9 @@ async function refreshAfterOperation() {
 
         loadLiveCells(),
 
-        loadEvents()
+        loadEvents(),
+
+        loadSelfHealingState()
     ]);
 }
 
@@ -5572,7 +6250,9 @@ async function loadEverything() {
 
             loadLiveCells(),
 
-            loadEvents()
+            loadEvents(),
+
+            loadSelfHealingState()
         ]);
 
     }

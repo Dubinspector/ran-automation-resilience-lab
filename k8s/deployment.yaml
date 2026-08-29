@@ -23,7 +23,7 @@ spec:
       containers:
         - name: ran-automation
 
-          image: ran-automation-resilience-lab:v2.0
+          image: ran-automation-resilience-lab:v2.1
 
           imagePullPolicy: IfNotPresent
 
