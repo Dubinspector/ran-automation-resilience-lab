@@ -744,7 +744,10 @@ def normalize_cell_kpis(
 def evaluate_ran_state(
     sites=None,
     weather=None,
-    simulation_timestamp=None
+    simulation_timestamp=None,
+    traffic_multiplier=1.0,
+    steering_mode="LEGACY",
+    area_traffic_multipliers=None
 ):
 
     if sites is None:
@@ -793,7 +796,16 @@ def evaluate_ran_state(
                 ANTENNA_PROFILES,
 
             simulation_timestamp=
-                simulation_timestamp
+                simulation_timestamp,
+
+            traffic_multiplier=
+                traffic_multiplier,
+
+            steering_mode=
+                steering_mode,
+
+            area_traffic_multipliers=
+                area_traffic_multipliers
         )
     )
 
@@ -809,6 +821,13 @@ def evaluate_ran_state(
             traffic_snapshot[
                 "simulation_timestamp"
             ],
+
+        "traffic_context":
+            deepcopy(
+                traffic_snapshot[
+                    "traffic_context"
+                ]
+            ),
 
         "configuration":
             build_configuration_inventory(

@@ -1008,6 +1008,270 @@ def choose_primary_layer(
 
 
 # =========================================================
+# LOAD-AWARE PRIMARY LAYER
+# =========================================================
+#
+# This deterministic learning-lab policy adds projected load to
+# radio quality when selecting a primary serving layer. It is NOT
+# a reproduction of T-Mobile mobility, scheduler, handover or
+# vendor-specific load-balancing parameters.
+#
+# The normal controller runtime uses LOAD_AWARE. Existing focused
+# model tests can still use LEGACY, preserving the older static
+# capacity-score selection as a deterministic reference path.
+# =========================================================
+
+BAND_STEERING_PRIORITY = {
+    "n78": 3,
+    "B3": 2,
+    "n28": 1,
+}
+
+
+def eligible_primary_candidates(candidates):
+    healthy = [
+        link
+        for link in candidates
+        if (
+            link["serviceability"]["serviceable"]
+            and link["serviceability"]["class"] == "HEALTHY"
+        )
+    ]
+
+    if healthy:
+        return healthy
+
+    return [
+        link
+        for link in candidates
+        if (
+            link["serviceability"]["serviceable"]
+            and link["serviceability"]["class"] == "DEGRADED"
+        )
+    ]
+
+
+def projected_prb_pct(
+    link,
+    record,
+    additional_active_ues,
+    demand_per_ue_mbps,
+):
+    # A candidate may be evaluated before it has carried any
+    # traffic. Do not require a persistent cell aggregation record
+    # just to calculate projected load.
+    #
+    # This is important because cell_records is a defaultdict.
+    # Reading cell_records[cell_id] during ranking would create a
+    # placeholder record with bandwidth_mhz=None. That placeholder
+    # would later be mistaken for an actual serving-cell KPI record.
+    if record is None:
+        record = {
+            "weight_sum": 0,
+            "weighted_efficiency_sum": 0.0,
+            "traffic_mbps": 0.0,
+        }
+
+    bounded_efficiency = clamp(
+        link["shannon_efficiency_bps_hz"],
+        0.0,
+        MAX_SPECTRAL_EFFICIENCY_BPS_HZ,
+    )
+
+    current_weight = record["weight_sum"]
+    projected_weight = current_weight + additional_active_ues
+
+    projected_efficiency_sum = (
+        record["weighted_efficiency_sum"]
+        + bounded_efficiency * additional_active_ues
+    )
+
+    mean_efficiency = (
+        projected_efficiency_sum / projected_weight
+        if projected_weight > 0
+        else bounded_efficiency
+    )
+
+    estimated_capacity_mbps = (
+        link["bandwidth_mhz"]
+        * mean_efficiency
+        * CAPACITY_EFFICIENCY_FACTOR
+    )
+
+    projected_traffic_mbps = (
+        record["traffic_mbps"]
+        + additional_active_ues * demand_per_ue_mbps
+    )
+
+    return (
+        projected_traffic_mbps
+        / max(estimated_capacity_mbps, 0.001)
+        * 100.0
+    )
+
+
+def choose_load_aware_primary_layer(
+    candidates,
+    cell_records,
+    sample_active_ues,
+    demand_per_ue_mbps,
+):
+    eligible = eligible_primary_candidates(candidates)
+
+    if not eligible:
+        return None
+
+    def ranking(link):
+        # Use .get() deliberately. Merely scoring a candidate must
+        # not create a new defaultdict entry.
+        record = cell_records.get(
+            link["cell_id"]
+        )
+
+        projected = projected_prb_pct(
+            link,
+            record,
+            sample_active_ues,
+            demand_per_ue_mbps,
+        )
+
+        # Lower projected PRB wins. Tie-breakers preserve preference
+        # for wider capacity layers and then stronger RF.
+        return (
+            projected,
+            -BAND_STEERING_PRIORITY.get(link["band"], 0),
+            -link["capacity_score_mbps"],
+            -link["rsrp_dbm"],
+            -link["sinr_db"],
+            link["cell_id"],
+        )
+
+    return min(eligible, key=ranking)
+
+
+
+# =========================================================
+# CELL-RECORD UPDATE
+# =========================================================
+#
+# One synthetic RF sample represents a group of active UEs.
+# Normal LOAD_AWARE steering keeps that group together on one
+# primary layer. CAPACITY_RECOVERY is a stronger remediation mode:
+# it may split the represented UE group across eligible layers so
+# projected PRB headroom can be used more evenly.
+#
+# This is a learning-lab abstraction of emergency load balancing,
+# not a claim about a specific operator/vendor mobility algorithm.
+# =========================================================
+
+def add_users_to_cell_record(
+    record,
+    link,
+    active_ues,
+    demand_per_ue_mbps,
+):
+    active_ues = int(active_ues)
+
+    if active_ues <= 0:
+        return
+
+    traffic_mbps = active_ues * demand_per_ue_mbps
+
+    record["active_users"] += active_ues
+    record["traffic_mbps"] += traffic_mbps
+    record["weighted_rsrp_sum"] += link["rsrp_dbm"] * active_ues
+    record["weighted_sinr_sum"] += link["sinr_db"] * active_ues
+
+    bounded_efficiency = clamp(
+        link["shannon_efficiency_bps_hz"],
+        0.0,
+        MAX_SPECTRAL_EFFICIENCY_BPS_HZ,
+    )
+
+    record["weighted_efficiency_sum"] += bounded_efficiency * active_ues
+    record["weight_sum"] += active_ues
+    record["bandwidth_mhz"] = link["bandwidth_mhz"]
+    record["technology"] = link["technology"]
+    record["band"] = link["band"]
+    record["site_id"] = link["site_id"]
+    record["sector_id"] = link["sector_id"]
+    record["serviceability_classes"][link["serviceability"]["class"]] += active_ues
+
+
+def build_assignment_row(
+    sample_id,
+    area_id,
+    active_ues,
+    demand_per_ue_mbps,
+    link,
+    steering_mode,
+):
+    return {
+        "sample_id": sample_id,
+        "area_id": area_id,
+        "active_ues": active_ues,
+        "traffic_mbps": round(active_ues * demand_per_ue_mbps, 3),
+        "status": "SERVED",
+        "primary_cell_id": link["cell_id"],
+        "site_id": link["site_id"],
+        "sector_id": link["sector_id"],
+        "technology": link["technology"],
+        "band": link["band"],
+        "bandwidth_mhz": link["bandwidth_mhz"],
+        "rsrp_dbm": link["rsrp_dbm"],
+        "sinr_db": link["sinr_db"],
+        "serviceability": link["serviceability"]["class"],
+        "capacity_score_mbps": link["capacity_score_mbps"],
+        "steering_mode": steering_mode,
+    }
+
+
+def distribute_capacity_recovery_users(
+    candidates,
+    cell_records,
+    sample_active_ues,
+    demand_per_ue_mbps,
+):
+    """
+    Emergency load-balancing policy used only by the remediation path.
+
+    Each RF sample represents a population cluster, not one literal UE.
+    The recovery policy therefore distributes the represented UEs across
+    eligible serving layers one UE at a time. Every allocation chooses the
+    candidate with the lowest projected PRB after that allocation.
+
+    The elevated demand is unchanged; only placement changes.
+    """
+    allocations = {}
+    allocation_links = {}
+
+    for _ in range(int(sample_active_ues)):
+        selected = choose_load_aware_primary_layer(
+            candidates,
+            cell_records,
+            1,
+            demand_per_ue_mbps,
+        )
+
+        if selected is None:
+            break
+
+        cell_id = selected["cell_id"]
+
+        add_users_to_cell_record(
+            cell_records[cell_id],
+            selected,
+            1,
+            demand_per_ue_mbps,
+        )
+
+        allocations[cell_id] = allocations.get(cell_id, 0) + 1
+        allocation_links[cell_id] = selected
+
+    return allocations, allocation_links
+
+
+# =========================================================
 # COMPLETE TRAFFIC SNAPSHOT
 # =========================================================
 
@@ -1016,7 +1280,10 @@ def build_traffic_snapshot(
     sites=None,
     observation_areas=None,
     antenna_profiles=None,
-    simulation_timestamp=None
+    simulation_timestamp=None,
+    traffic_multiplier=1.0,
+    steering_mode="LEGACY",
+    area_traffic_multipliers=None
 ):
 
     # -----------------------------------------------------
@@ -1046,6 +1313,71 @@ def build_traffic_snapshot(
             simulation_timestamp
         )
     )
+
+
+    traffic_multiplier = max(
+        0.0,
+        float(traffic_multiplier)
+    )
+
+
+    # Optional per-area multipliers allow the learning lab to model a
+    # local traffic hotspot without multiplying demand everywhere.
+    #
+    # Example:
+    #     {"UE-DOLNI-JIRCANY": 3.0}
+    #
+    # This is synthetic scenario input, not measured operator traffic.
+    if area_traffic_multipliers is None:
+        area_traffic_multipliers = {}
+
+    normalized_area_traffic_multipliers = {}
+
+    for area_id, factor in area_traffic_multipliers.items():
+        normalized_area_traffic_multipliers[str(area_id)] = max(
+            0.0,
+            float(factor)
+        )
+
+
+    # Global multiplier defines the normal operating scale. A local
+    # hotspot factor is then applied only to the selected area.
+    for area_id, area in demand["areas"].items():
+        local_multiplier = normalized_area_traffic_multipliers.get(
+            area_id,
+            1.0
+        )
+
+        area["active_ues"] = int(
+            round(
+                area["active_ues"]
+                * traffic_multiplier
+                * local_multiplier
+            )
+        )
+
+        area["traffic_multiplier"] = round(
+            traffic_multiplier * local_multiplier,
+            3
+        )
+
+
+    demand["total_active_ues"] = sum(
+        area["active_ues"]
+        for area in demand["areas"].values()
+    )
+
+
+    steering_mode = str(steering_mode).upper()
+
+    if steering_mode not in {
+        "LEGACY",
+        "LOAD_AWARE",
+        "CAPACITY_RECOVERY",
+    }:
+        raise ValueError(
+            f"Unsupported steering_mode: {steering_mode}"
+        )
 
 
     # -----------------------------------------------------
@@ -1251,11 +1583,101 @@ def build_traffic_snapshot(
         )
 
 
-        primary = (
-            choose_primary_layer(
-                candidates
-            )
+        demand_per_ue = (
+            demand[
+                "areas"
+            ][
+                area_id
+            ][
+                "avg_active_ue_demand_mbps"
+            ]
         )
+
+
+        # -------------------------------------------------
+        # CAPACITY-RECOVERY REMEDIATION
+        # -------------------------------------------------
+        #
+        # Unlike normal steering, the represented UE group may be
+        # split across multiple eligible layers. The traffic demand
+        # itself remains unchanged.
+        # -------------------------------------------------
+
+        if steering_mode == "CAPACITY_RECOVERY":
+
+            (
+                recovery_allocations,
+                recovery_links,
+            ) = distribute_capacity_recovery_users(
+                candidates,
+                cell_records,
+                sample_active_ues,
+                demand_per_ue,
+            )
+
+            allocated_ues = sum(recovery_allocations.values())
+            served_active_ues += allocated_ues
+
+            missing_ues = sample_active_ues - allocated_ues
+            unserved_active_ues += missing_ues
+
+            for cell_id in sorted(recovery_allocations):
+                allocation_ues = recovery_allocations[cell_id]
+
+                if allocation_ues <= 0:
+                    continue
+
+                assignments.append(
+                    build_assignment_row(
+                        sample_id,
+                        area_id,
+                        allocation_ues,
+                        demand_per_ue,
+                        recovery_links[cell_id],
+                        "CAPACITY_RECOVERY",
+                    )
+                )
+
+            if missing_ues > 0:
+                assignments.append({
+                    "sample_id": sample_id,
+                    "area_id": area_id,
+                    "active_ues": missing_ues,
+                    "status": "UNSERVED",
+                    "primary_cell_id": None,
+                    "available_layers": [
+                        {
+                            "cell_id": item["cell_id"],
+                            "band": item["band"],
+                            "rsrp_dbm": item["rsrp_dbm"],
+                            "sinr_db": item["sinr_db"],
+                            "serviceability": item["serviceability"]["class"],
+                        }
+                        for item in candidates
+                    ],
+                    "steering_mode": "CAPACITY_RECOVERY",
+                })
+
+            continue
+
+        if steering_mode == "LOAD_AWARE":
+
+            primary = (
+                choose_load_aware_primary_layer(
+                    candidates,
+                    cell_records,
+                    sample_active_ues,
+                    demand_per_ue
+                )
+            )
+
+        else:
+
+            primary = (
+                choose_primary_layer(
+                    candidates
+                )
+            )
 
 
         # -------------------------------------------------
@@ -1334,18 +1756,6 @@ def build_traffic_snapshot(
 
         served_active_ues += (
             sample_active_ues
-        )
-
-
-        demand_per_ue = (
-
-            demand[
-                "areas"
-            ][
-                area_id
-            ][
-                "avg_active_ue_demand_mbps"
-            ]
         )
 
 
@@ -1783,6 +2193,23 @@ def build_traffic_snapshot(
 
         "simulation_timestamp":
             simulation_timestamp,
+
+
+        "traffic_context": {
+            "multiplier":
+                round(
+                    traffic_multiplier,
+                    3
+                ),
+
+            "area_traffic_multipliers":
+                deepcopy(
+                    normalized_area_traffic_multipliers
+                ),
+
+            "steering_mode":
+                steering_mode
+        },
 
 
         "population_model": {

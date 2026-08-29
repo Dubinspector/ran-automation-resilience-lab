@@ -77,7 +77,9 @@ class RanAutomationController:
 
     def __init__(
         self,
-        simulation_timestamp=None
+        simulation_timestamp=None,
+        traffic_multiplier=1.0,
+        steering_mode="LEGACY"
     ):
 
         self._lock = RLock()
@@ -130,6 +132,40 @@ class RanAutomationController:
         self._fault_state = None
 
 
+        # -------------------------------------------------
+        # TRAFFIC / STEERING CONTEXT
+        # -------------------------------------------------
+        #
+        # These are explicit learning-lab inputs. They are separate
+        # from weather observation time and from RAN configuration.
+        # A capacity fault can raise the traffic multiplier without
+        # changing CONFIG-1.x. Capacity remediation can then change
+        # steering policy while keeping the elevated demand fixed.
+        # -------------------------------------------------
+
+        self._normal_traffic_multiplier = max(
+            0.0,
+            float(traffic_multiplier)
+        )
+
+        self._normal_steering_mode = str(
+            steering_mode
+        ).upper()
+
+        self._traffic_multiplier = (
+            self._normal_traffic_multiplier
+        )
+
+        self._steering_mode = (
+            self._normal_steering_mode
+        )
+
+        # Per-area traffic multipliers are empty in normal operation.
+        # Capacity fault injection may add one local hotspot while
+        # keeping the global normal traffic scale unchanged.
+        self._area_traffic_multipliers = {}
+
+
         initial_weather = (
             self._resolve_weather_snapshot()
         )
@@ -143,15 +179,10 @@ class RanAutomationController:
 
 
         self._active_snapshot = (
-            evaluate_ran_state(
-
+            self._evaluate_sites_for_context(
                 self._active_sites,
-
-                weather=
-                    initial_weather,
-
-                simulation_timestamp=
-                    initial_simulation_timestamp
+                initial_weather,
+                initial_simulation_timestamp
             )
         )
 
@@ -191,7 +222,13 @@ class RanAutomationController:
                     ),
 
                 "simulation_timestamp":
-                    initial_simulation_timestamp
+                    initial_simulation_timestamp,
+
+                "traffic_multiplier":
+                    self._traffic_multiplier,
+
+                "steering_mode":
+                    self._steering_mode
             }
         )
 
@@ -301,6 +338,39 @@ class RanAutomationController:
 
 
     # =====================================================
+    # RAN EVALUATION WITH EXPLICIT TRAFFIC CONTEXT
+    # =====================================================
+
+    def _evaluate_sites_for_context(
+        self,
+        sites,
+        weather,
+        simulation_timestamp,
+        traffic_multiplier=None,
+        steering_mode=None,
+        area_traffic_multipliers=None
+    ):
+
+        if traffic_multiplier is None:
+            traffic_multiplier = self._traffic_multiplier
+
+        if steering_mode is None:
+            steering_mode = self._steering_mode
+
+        if area_traffic_multipliers is None:
+            area_traffic_multipliers = self._area_traffic_multipliers
+
+        return evaluate_ran_state(
+            sites,
+            weather=weather,
+            simulation_timestamp=simulation_timestamp,
+            traffic_multiplier=traffic_multiplier,
+            steering_mode=steering_mode,
+            area_traffic_multipliers=area_traffic_multipliers,
+        )
+
+
+    # =====================================================
     # ACTIVE RAN OBSERVATION
     # =====================================================
 
@@ -323,15 +393,10 @@ class RanAutomationController:
         """
 
         snapshot = (
-            evaluate_ran_state(
-
+            self._evaluate_sites_for_context(
                 self._active_sites,
-
-                weather=
-                    weather,
-
-                simulation_timestamp=
-                    simulation_timestamp
+                weather,
+                simulation_timestamp
             )
         )
 
@@ -622,6 +687,14 @@ class RanAutomationController:
 
                 "last_action":
                     self._last_action,
+
+                "traffic_context": {
+                    "multiplier":
+                        self._traffic_multiplier,
+
+                    "steering_mode":
+                        self._steering_mode
+                },
 
                 "fault_active":
                     bool(
@@ -1093,8 +1166,446 @@ class RanAutomationController:
                     self._rollout_state,
 
                 "last_action":
-                    self._last_action
+                    self._last_action,
+
+                "traffic_multiplier":
+                    self._traffic_multiplier,
+
+                "normal_traffic_multiplier":
+                    self._normal_traffic_multiplier,
+
+                "steering_mode":
+                    self._steering_mode,
+
+                "area_traffic_multipliers":
+                    deepcopy(
+                        self._area_traffic_multipliers
+                    )
             }
+
+
+    def inject_capacity_spike(
+        self,
+        spike_factor=8.0,
+        weather=None,
+        simulation_timestamp=None
+    ):
+
+        with self._lock:
+
+            if (
+                self._fault_state
+                and self._fault_state.get("active")
+            ):
+                return {
+                    "status": "BLOCKED",
+                    "reason": "ACTIVE_FAULT_ALREADY_PRESENT",
+                    "active_version": self.active_version,
+                    "fault": deepcopy(self._fault_state),
+                    "configuration_changed": False,
+                }
+
+            requested_spike_factor = float(spike_factor)
+
+            if requested_spike_factor <= 1.0:
+                raise ValueError(
+                    "Capacity spike factor must be greater than 1.0."
+                )
+
+            attempt_id = self._next_attempt_id()
+            attempt_weather = self._resolve_weather_snapshot(weather)
+            attempt_simulation_timestamp = (
+                self._resolve_simulation_timestamp(simulation_timestamp)
+            )
+
+            pre_snapshot = self._refresh_active_snapshot_for_context(
+                attempt_weather,
+                attempt_simulation_timestamp
+            )
+            pre_health = self._baseline_health_summary(pre_snapshot)
+
+            if pre_health["status"] != "PASS":
+                return {
+                    "status": "BLOCKED",
+                    "reason": "ACTIVE_RAN_OUTSIDE_SAFE_ENVELOPE",
+                    "active_version": self.active_version,
+                    "baseline_health_before": pre_health,
+                    "configuration_changed": False,
+                    "configuration_revision_changed": False,
+                }
+
+            pre_multiplier = self._traffic_multiplier
+            pre_steering = self._steering_mode
+            pre_area_multipliers = deepcopy(
+                self._area_traffic_multipliers
+            )
+
+            # -------------------------------------------------
+            # LOCAL HOTSPOT SEARCH
+            # -------------------------------------------------
+            #
+            # A network-wide traffic multiplier can simply exhaust total
+            # capacity, leaving no steering-only recovery path. For the
+            # self-healing demo we instead search for a LOCAL demand
+            # hotspot: normal LOAD_AWARE placement becomes unsafe, while
+            # CAPACITY_RECOVERY can redistribute the represented UE group
+            # across eligible layers under the exact same hotspot demand.
+            #
+            # The area is chosen from the current RF/traffic assignments,
+            # not hard-coded to one municipality.
+            # -------------------------------------------------
+
+            area_ids = sorted({
+                row.get("area_id")
+                for row in pre_snapshot.get("assignments", [])
+                if row.get("area_id")
+            })
+
+            candidate_factors = []
+            factor = requested_spike_factor
+
+            while factor >= 1.1:
+                candidate_factors.append(round(factor, 2))
+                factor -= 0.1
+
+            if 1.1 not in candidate_factors:
+                candidate_factors.append(1.1)
+
+            selected = None
+            attempts = []
+
+            for candidate_factor in candidate_factors:
+
+                for area_id in area_ids:
+                    hotspot = {
+                        area_id: candidate_factor
+                    }
+
+                    fault_snapshot = self._evaluate_sites_for_context(
+                        self._active_sites,
+                        attempt_weather,
+                        attempt_simulation_timestamp,
+                        traffic_multiplier=pre_multiplier,
+                        steering_mode="LOAD_AWARE",
+                        area_traffic_multipliers=hotspot,
+                    )
+                    fault_health = self._baseline_health_summary(
+                        fault_snapshot
+                    )
+
+                    recovery_preview = self._evaluate_sites_for_context(
+                        self._active_sites,
+                        attempt_weather,
+                        attempt_simulation_timestamp,
+                        traffic_multiplier=pre_multiplier,
+                        steering_mode="CAPACITY_RECOVERY",
+                        area_traffic_multipliers=hotspot,
+                    )
+                    recovery_preview_health = self._baseline_health_summary(
+                        recovery_preview
+                    )
+
+                    fault_max = fault_health["guardrails"]["summary"].get(
+                        "max_candidate_prb"
+                    )
+                    recovery_max = (
+                        recovery_preview_health["guardrails"]["summary"].get(
+                            "max_candidate_prb"
+                        )
+                    )
+
+                    attempts.append({
+                        "area_id": area_id,
+                        "spike_factor": candidate_factor,
+                        "fault_status": fault_health["status"],
+                        "recovery_status": recovery_preview_health["status"],
+                        "fault_max_prb": (
+                            fault_max.get("prb_utilization_pct")
+                            if fault_max else None
+                        ),
+                        "recovery_max_prb": (
+                            recovery_max.get("prb_utilization_pct")
+                            if recovery_max else None
+                        ),
+                    })
+
+                    if (
+                        fault_health["status"] == "FAIL"
+                        and
+                        recovery_preview_health["status"] == "PASS"
+                    ):
+                        selected = (
+                            area_id,
+                            candidate_factor,
+                            hotspot,
+                            fault_snapshot,
+                            fault_health,
+                            recovery_preview_health,
+                        )
+                        break
+
+                if selected is not None:
+                    break
+
+            if selected is None:
+                self._record_event(
+                    event_type="CAPACITY_SPIKE_NOT_INJECTED",
+                    status="BLOCKED",
+                    message=(
+                        "No local hotspot was found where capacity "
+                        "recovery can restore the safe envelope."
+                    ),
+                    details={
+                        "attempt_id": attempt_id,
+                        "active_version": self.active_version,
+                        "requested_spike_factor": requested_spike_factor,
+                        "traffic_multiplier_before": pre_multiplier,
+                        "simulation_timestamp": attempt_simulation_timestamp,
+                        "search_attempts": attempts[-20:],
+                    },
+                )
+
+                return {
+                    "status": "BLOCKED",
+                    "reason": "NO_RECOVERABLE_LOCAL_CAPACITY_HOTSPOT_FOUND",
+                    "attempt_id": attempt_id,
+                    "active_version": self.active_version,
+                    "baseline_health_before": pre_health,
+                    "requested_spike_factor": requested_spike_factor,
+                    "search_attempt_count": len(attempts),
+                    "search_tail": attempts[-12:],
+                    "configuration_changed": False,
+                    "configuration_revision_changed": False,
+                }
+
+            (
+                hotspot_area_id,
+                applied_spike_factor,
+                hotspot,
+                fault_snapshot,
+                fault_health,
+                recovery_preview_health,
+            ) = selected
+
+            self._area_traffic_multipliers = deepcopy(hotspot)
+            self._steering_mode = "LOAD_AWARE"
+            self._active_snapshot = deepcopy(fault_snapshot)
+            self._rollout_state = "DEGRADED"
+            self._last_action = "CAPACITY_HOTSPOT_INJECTED"
+            self._fault_state = {
+                "active": True,
+                "fault_id": attempt_id,
+                "type": "CAPACITY_SPIKE",
+                "scope": "LOCAL_HOTSPOT",
+                "hotspot_area_id": hotspot_area_id,
+                "requested_spike_factor": requested_spike_factor,
+                "spike_factor": applied_spike_factor,
+                "pre_traffic_multiplier": pre_multiplier,
+                "fault_traffic_multiplier": pre_multiplier,
+                "pre_area_traffic_multipliers": pre_area_multipliers,
+                "fault_area_traffic_multipliers": deepcopy(hotspot),
+                "pre_steering_mode": pre_steering,
+                "fault_steering_mode": "LOAD_AWARE",
+                "recovery_preview_safe": (
+                    recovery_preview_health["status"] == "PASS"
+                ),
+            }
+
+            pre_max = pre_health["guardrails"]["summary"].get(
+                "max_candidate_prb"
+            )
+            fault_max = fault_health["guardrails"]["summary"].get(
+                "max_candidate_prb"
+            )
+            recovery_preview_max = (
+                recovery_preview_health["guardrails"]["summary"].get(
+                    "max_candidate_prb"
+                )
+            )
+
+            self._record_event(
+                event_type="CAPACITY_HOTSPOT_INJECTED",
+                status="WARNING",
+                message=(
+                    "Synthetic local traffic hotspot injected without "
+                    "changing accepted RAN configuration."
+                ),
+                details={
+                    "attempt_id": attempt_id,
+                    "active_version": self.active_version,
+                    "hotspot_area_id": hotspot_area_id,
+                    "requested_spike_factor": requested_spike_factor,
+                    "applied_spike_factor": applied_spike_factor,
+                    "traffic_multiplier": pre_multiplier,
+                    "area_traffic_multipliers": deepcopy(hotspot),
+                    "steering_mode": "LOAD_AWARE",
+                    "max_prb_before": pre_max,
+                    "max_prb_after": fault_max,
+                    "recovery_preview_max_prb": recovery_preview_max,
+                    "recovery_preview_safe": True,
+                    "simulation_timestamp": attempt_simulation_timestamp,
+                },
+            )
+
+            return {
+                "status": "FAULT_INJECTED",
+                "reason": "LEARNING_LAB_LOCAL_CAPACITY_HOTSPOT",
+                "attempt_id": attempt_id,
+                "active_version": self.active_version,
+                "weather": deepcopy(attempt_weather),
+                "simulation_timestamp": attempt_simulation_timestamp,
+                "fault": deepcopy(self._fault_state),
+                "baseline_health_before": pre_health,
+                "baseline_health_after": fault_health,
+                "requested_spike_factor": requested_spike_factor,
+                "applied_spike_factor": applied_spike_factor,
+                "hotspot_area_id": hotspot_area_id,
+                "traffic_multiplier_before": pre_multiplier,
+                "traffic_multiplier_after": pre_multiplier,
+                "area_traffic_multipliers_before": pre_area_multipliers,
+                "area_traffic_multipliers_after": deepcopy(hotspot),
+                "steering_mode_before": pre_steering,
+                "steering_mode_after": "LOAD_AWARE",
+                "max_prb_before": pre_max,
+                "max_prb_after": fault_max,
+                "recovery_preview_max_prb": recovery_preview_max,
+                "recovery_preview_safe": True,
+                "configuration_changed": False,
+                "configuration_revision_changed": False,
+                "steps": [
+                    {"step": "Observe healthy pre-hotspot RAN state", "status": "PASS"},
+                    {"step": "Inject local synthetic traffic hotspot", "status": "PASS"},
+                    {"step": "Detect PRB / capacity overload", "status": "FAIL"},
+                    {"step": "Pre-compute split-steering recovery", "status": "PASS"},
+                ],
+            }
+
+
+    def _run_capacity_self_healing_locked(
+        self,
+        fault,
+        attempt_id,
+        attempt_weather,
+        attempt_simulation_timestamp
+    ):
+
+        faulted_snapshot = self._refresh_active_snapshot_for_context(
+            attempt_weather,
+            attempt_simulation_timestamp
+        )
+        faulted_health = self._baseline_health_summary(faulted_snapshot)
+
+        # Keep the elevated traffic multiplier fixed. Only the
+        # traffic-placement policy changes, which keeps causality clear.
+        recovery_snapshot = self._evaluate_sites_for_context(
+            self._active_sites,
+            attempt_weather,
+            attempt_simulation_timestamp,
+            traffic_multiplier=self._traffic_multiplier,
+            steering_mode="CAPACITY_RECOVERY",
+            area_traffic_multipliers=self._area_traffic_multipliers,
+        )
+        recovery_health = self._baseline_health_summary(recovery_snapshot)
+        recovery_guardrails = evaluate_ran_guardrails(
+            faulted_snapshot,
+            recovery_snapshot
+        )
+
+        fault_max = faulted_health["guardrails"]["summary"].get(
+            "max_candidate_prb"
+        )
+        recovery_max = recovery_health["guardrails"]["summary"].get(
+            "max_candidate_prb"
+        )
+
+        recovered = recovery_health["status"] == "PASS"
+
+        if recovered:
+            self._steering_mode = "CAPACITY_RECOVERY"
+            self._active_snapshot = deepcopy(recovery_snapshot)
+            self._fault_state = None
+            self._rollout_state = "STABLE"
+            self._last_action = "SELF_HEALED_CAPACITY"
+            event_status = "PASS"
+            status = "RECOVERED"
+            reason = "CAPACITY_HOTSPOT_RECOVERED_BY_SPLIT_STEERING"
+        else:
+            # Keep the fault active and the pre-remediation state.
+            self._active_snapshot = deepcopy(faulted_snapshot)
+            self._rollout_state = "DEGRADED"
+            self._last_action = "CAPACITY_RECOVERY_INCOMPLETE"
+            event_status = "FAIL"
+            status = "RECOVERY_INCOMPLETE"
+            reason = "CAPACITY_REMEDIATION_DID_NOT_RESTORE_SAFE_ENVELOPE"
+
+        remaining = [
+            check["name"]
+            for check in recovery_health["failed_checks"]
+        ]
+
+        self._record_event(
+            event_type="CAPACITY_SELF_HEAL_COMPLETED",
+            status=event_status,
+            message=(
+                "Capacity remediation kept the traffic spike active and "
+                "re-evaluated service with capacity-recovery split steering."
+            ),
+            details={
+                "attempt_id": attempt_id,
+                "fault_id": fault["fault_id"],
+                "active_version": self.active_version,
+                "traffic_multiplier": self._traffic_multiplier,
+                "area_traffic_multipliers": deepcopy(
+                    self._area_traffic_multipliers
+                ),
+                "hotspot_area_id": fault.get("hotspot_area_id"),
+                "steering_mode_candidate": "CAPACITY_RECOVERY",
+                "max_prb_before": fault_max,
+                "max_prb_after": recovery_max,
+                "full_safe_envelope_restored": recovered,
+                "remaining_failed_checks": remaining,
+                "simulation_timestamp": attempt_simulation_timestamp,
+            },
+        )
+
+        return {
+            "status": status,
+            "reason": reason,
+            "attempt_id": attempt_id,
+            "fault": fault,
+            "active_version": self.active_version,
+            "weather": deepcopy(attempt_weather),
+            "simulation_timestamp": attempt_simulation_timestamp,
+            "faulted_baseline_health": faulted_health,
+            "recovered_baseline_health": recovery_health,
+            "recovery_guardrails": recovery_guardrails,
+            "traffic_multiplier": self._traffic_multiplier,
+            "area_traffic_multipliers": deepcopy(
+                self._area_traffic_multipliers
+            ),
+            "hotspot_area_id": fault.get("hotspot_area_id"),
+            "steering_mode_before": fault.get("fault_steering_mode"),
+            "steering_mode_after": (
+                "CAPACITY_RECOVERY" if recovered else self._steering_mode
+            ),
+            "max_prb_before": fault_max,
+            "max_prb_after": recovery_max,
+            "configuration_restored": False,
+            "configuration_changed": False,
+            "configuration_revision_changed": False,
+            "scope_recovery_improved": recovered,
+            "full_safe_envelope_restored": recovered,
+            "remaining_failed_checks": remaining,
+            "steps": [
+                {"step": "Detect capacity-congestion fault", "status": "PASS"},
+                {"step": "Freeze elevated traffic demand", "status": "PASS"},
+                {"step": "Apply capacity-recovery split steering", "status": "PASS"},
+                {
+                    "step": "Verify post-remediation safe envelope",
+                    "status": "PASS" if recovered else "FAIL",
+                },
+            ],
+        }
 
 
     def inject_rf_fault(
@@ -1243,15 +1754,10 @@ class RanAutomationController:
 
 
             fault_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     fault_sites,
-
-                    weather=
-                        attempt_weather,
-
-                    simulation_timestamp=
-                        attempt_simulation_timestamp
+                    attempt_weather,
+                    attempt_simulation_timestamp
                 )
             )
 
@@ -1516,7 +2022,7 @@ class RanAutomationController:
                         "NO_ACTION",
 
                     "reason":
-                        "NO_ACTIVE_INJECTED_RF_FAULT",
+                        "NO_ACTIVE_INJECTED_FAULT",
 
                     "active_version":
                         self.active_version,
@@ -1573,6 +2079,15 @@ class RanAutomationController:
             )
 
 
+            if fault.get("type") == "CAPACITY_SPIKE":
+                return self._run_capacity_self_healing_locked(
+                    fault,
+                    attempt_id,
+                    attempt_weather,
+                    attempt_simulation_timestamp
+                )
+
+
             faulted_snapshot = (
                 self._refresh_active_snapshot_for_context(
                     attempt_weather,
@@ -1594,15 +2109,10 @@ class RanAutomationController:
 
 
             recovery_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     recovery_sites,
-
-                    weather=
-                        attempt_weather,
-
-                    simulation_timestamp=
-                        attempt_simulation_timestamp
+                    attempt_weather,
+                    attempt_simulation_timestamp
                 )
             )
 
@@ -2021,15 +2531,10 @@ class RanAutomationController:
 
 
             candidate_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     candidate_sites,
-
-                    weather=
-                        attempt_weather,
-
-                    simulation_timestamp=
-                        attempt_simulation_timestamp
+                    attempt_weather,
+                    attempt_simulation_timestamp
                 )
             )
 
@@ -2696,15 +3201,10 @@ class RanAutomationController:
 
 
             candidate_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     candidate_sites,
-
-                    weather=
-                        attempt_weather,
-
-                    simulation_timestamp=
-                        attempt_simulation_timestamp
+                    attempt_weather,
+                    attempt_simulation_timestamp
                 )
             )
 
@@ -2981,15 +3481,10 @@ class RanAutomationController:
             # =================================================
 
             restored_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     self._active_sites,
-
-                    weather=
-                        attempt_weather,
-
-                    simulation_timestamp=
-                        attempt_simulation_timestamp
+                    attempt_weather,
+                    attempt_simulation_timestamp
                 )
             )
 
@@ -3204,16 +3699,21 @@ class RanAutomationController:
             )
 
 
+            self._traffic_multiplier = (
+                self._normal_traffic_multiplier
+            )
+
+            self._steering_mode = (
+                self._normal_steering_mode
+            )
+
+            self._area_traffic_multipliers = {}
+
             self._active_snapshot = (
-                evaluate_ran_state(
-
+                self._evaluate_sites_for_context(
                     self._active_sites,
-
-                    weather=
-                        restore_weather,
-
-                    simulation_timestamp=
-                        restore_simulation_timestamp
+                    restore_weather,
+                    restore_simulation_timestamp
                 )
             )
 

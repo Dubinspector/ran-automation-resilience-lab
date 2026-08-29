@@ -72,7 +72,7 @@ app = FastAPI(
         "RAN Automation Delivery & Resilience Lab",
 
     version=
-        "2.1"
+        "2.2"
 )
 
 
@@ -88,13 +88,25 @@ ENVIRONMENT_NAME = os.getenv(
 
 APPLICATION_RELEASE = os.getenv(
     "APPLICATION_RELEASE",
-    "APP-v2.1"
+    "APP-v2.2"
 )
 
 
 RAN_ADAPTER_URL = os.getenv(
     "RAN_ADAPTER_URL",
     "http://127.0.0.1:8000"
+)
+
+
+# Synthetic normal-load calibration for the operator demo.
+# This is deliberately explicit and is NOT claimed to be measured
+# T-Mobile traffic. Focused engine/controller regression tests keep
+# their legacy multiplier=1.0 unless they opt into this runtime value.
+NORMAL_TRAFFIC_MULTIPLIER = float(
+    os.getenv(
+        "NORMAL_TRAFFIC_MULTIPLIER",
+        "0.25"
+    )
 )
 
 
@@ -115,7 +127,13 @@ RAN_ADAPTER_URL = os.getenv(
 # =========================================================
 
 controller = (
-    RanAutomationController()
+    RanAutomationController(
+        traffic_multiplier=
+            NORMAL_TRAFFIC_MULTIPLIER,
+
+        steering_mode=
+            "LOAD_AWARE"
+    )
 )
 
 
@@ -201,6 +219,15 @@ class RfFaultInjectionRequest(BaseModel):
         default=30.0,
         ge=MIN_TX_POWER_DBM,
         le=MAX_TX_POWER_DBM
+    )
+
+
+class CapacitySpikeInjectionRequest(BaseModel):
+
+    spike_factor: float = Field(
+        default=8.0,
+        gt=1.0,
+        le=8.0
     )
 
 
@@ -1464,6 +1491,7 @@ def get_status():
         "baseline_health": baseline_health,
         "service": observation["service"],
         "self_healing": controller.get_self_healing_state(),
+        "normal_traffic_multiplier": NORMAL_TRAFFIC_MULTIPLIER,
     }
 
 
@@ -1480,7 +1508,7 @@ def get_self_healing_status():
 
     Normal guarded changes and recovery are intentionally separate:
     an unhealthy baseline blocks ordinary promotion, while an active
-    injected learning-lab RF fault authorizes the recovery workflow.
+    injected learning-lab fault authorizes the recovery workflow.
     """
 
     return controller.get_self_healing_state()
@@ -2329,6 +2357,45 @@ def inject_rf_fault(
 
 
 # =========================================================
+# LEARNING-LAB CAPACITY SPIKE INJECTION
+# =========================================================
+#
+# This changes synthetic traffic demand, not accepted RAN
+# configuration. The subsequent self-healing path must keep the
+# elevated demand fixed and recover by changing traffic steering.
+# =========================================================
+
+@app.post(
+    "/self-healing/inject-capacity-spike"
+)
+def inject_capacity_spike(
+    request: CapacitySpikeInjectionRequest
+):
+
+    try:
+        result = controller.inject_capacity_spike(
+            spike_factor=request.spike_factor
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    snapshot = controller.get_active_snapshot()
+
+    return {
+        **result,
+        "active_config": get_active_dashboard_config(),
+        "cells": normalized_cells_to_dashboard(
+            snapshot["cells"]
+        ),
+        "self_healing": controller.get_self_healing_state(),
+    }
+
+
+# =========================================================
 # SELF-HEALING / RECOVERY
 # =========================================================
 #
@@ -2338,9 +2405,8 @@ def inject_rf_fault(
 #
 # For a recovery attempt we freeze the same weather + traffic-clock
 # context and restore the last intentionally accepted known-good
-# configuration. Target RF recovery is verified separately from the
-# full-network safe-envelope result so unrelated capacity alarms are
-# not falsely reported as repaired.
+# configuration or apply capacity-recovery split steering for a capacity event.
+# Capacity recovery keeps the elevated demand fixed during verification.
 # =========================================================
 
 @app.post(

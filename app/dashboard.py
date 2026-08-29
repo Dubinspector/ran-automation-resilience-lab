@@ -1402,9 +1402,7 @@ summary {
 The sites and operational thresholds are synthetic
 learning-lab data.
 
-The RF layer is geography-aware and physics-inspired,
-but this dashboard does not claim real T-Mobile BTS
-locations or production policy.
+The RF layer is geography-aware and physics-inspired.
 
 </div>
 
@@ -1588,11 +1586,12 @@ network state passes the guardrails.
 
 <div class="section-note">
     Normal Guarded Apply stays fail-closed when the active RAN is already
-    outside the safe envelope. This separate learning-lab path injects an
-    RF fault, keeps the accepted configuration revision unchanged, then
-    restores the last accepted known-good configuration and verifies the
-    target RF/service recovery under one fixed weather + traffic-clock
-    context. Unrelated capacity alarms remain visible.
+    outside the safe envelope. The default v2.2 operating point is calibrated
+    to be healthy. Separate learning-lab fault buttons can inject either an RF
+    TX-power degradation or a traffic/local capacity hotspot without changing the
+    accepted CONFIG revision. Self-healing restores RF configuration or keeps
+    the hotspot demand fixed while enabling capacity-recovery split steering, then verifies
+    the resulting safe envelope.
 </div>
 
 <div class="self-heal-grid">
@@ -1623,6 +1622,21 @@ network state passes the guardrails.
     </div>
 
     <div class="self-heal-field">
+        <label>Capacity Spike Factor</label>
+        <div class="self-heal-value">
+            <input
+                id="capacity-spike-factor"
+                type="number"
+                min="1.1"
+                max="8.0"
+                step="0.1"
+                value="8.0"
+            >
+            x normal traffic
+        </div>
+    </div>
+
+    <div class="self-heal-field">
         <label>Recovery State</label>
         <div
             id="self-heal-state"
@@ -1644,6 +1658,13 @@ network state passes the guardrails.
     </button>
 
     <button
+        class="btn-fault"
+        onclick="withOperationLock(injectCapacitySpike)"
+    >
+        Inject Capacity Spike
+    </button>
+
+    <button
         class="btn-heal"
         onclick="withOperationLock(runSelfHealing)"
     >
@@ -1651,7 +1672,7 @@ network state passes the guardrails.
     </button>
 
     <span class="muted" style="font-size:12px">
-        Demo scope: all enabled n78 cells on the selected working site.
+        RF demo scope: enabled n78 cells on the selected site. Capacity demo auto-selects a recoverable local traffic hotspot.
     </span>
 
 </div>
@@ -5619,17 +5640,30 @@ async function loadSelfHealingState() {
             || {};
 
 
-        target.innerHTML =
-            `${badge("FAULT_INJECTED")} `
-            + `${displayValue(fault.type)} / `
-            + `${(fault.cell_ids || []).length} cell(s) / `
-            + `recover ${state.recovery_target_version}`;
+        if (fault.type === "CAPACITY_SPIKE") {
+            target.innerHTML =
+                `${badge("FAULT_INJECTED")} `
+                + `CAPACITY_SPIKE / `
+                + `${displayValue(fault.hotspot_area_id)} / `
+                + `${displayValue(fault.spike_factor)}x local / `
+                + `${displayValue(state.traffic_multiplier)} global / `
+                + `${displayValue(state.steering_mode)}`;
+        }
+        else {
+            target.innerHTML =
+                `${badge("FAULT_INJECTED")} `
+                + `${displayValue(fault.type)} / `
+                + `${(fault.cell_ids || []).length} cell(s) / `
+                + `recover ${state.recovery_target_version}`;
+        }
     }
 
     else {
 
         target.innerHTML =
-            `${badge("STABLE")} no injected RF fault`;
+            `${badge("STABLE")} no injected fault / `
+            + `${displayValue(state.traffic_multiplier)} traffic / `
+            + `${displayValue(state.steering_mode)}`;
     }
 
 
@@ -5843,6 +5877,120 @@ async function injectRfFault() {
 }
 
 
+async function injectCapacitySpike() {
+
+    try {
+
+        const spikeFactor =
+            Number(
+                document.getElementById(
+                    "capacity-spike-factor"
+                ).value
+            );
+
+        const result =
+            await api(
+                "/self-healing/inject-capacity-spike",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body: JSON.stringify({
+                        spike_factor: spikeFactor
+                    })
+                }
+            );
+
+        showRaw(result);
+
+        const panel =
+            document.getElementById(
+                "decision-panel"
+            );
+
+        panel.className =
+            "decision-panel decision-warning";
+
+        document.getElementById(
+            "decision-headline"
+        ).textContent =
+            result.status === "BLOCKED"
+            ? "CAPACITY SPIKE INJECTION BLOCKED"
+            : "CAPACITY SPIKE INJECTED - SELF-HEAL AVAILABLE";
+
+        const beforeMax =
+            result.max_prb_before
+            || {};
+
+        const afterMax =
+            result.max_prb_after
+            || {};
+
+        document.getElementById(
+            "decision-summary"
+        ).innerHTML = `
+            <div class="decision-item">
+                Status
+                <strong>${badge(result.status)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Spike Factor
+                <strong>${displayValue(result.fault?.spike_factor || spikeFactor)}x</strong>
+            </div>
+
+            <div class="decision-item">
+                Hotspot Area
+                <strong>${displayValue(result.hotspot_area_id)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Global Traffic Scale
+                <strong>${displayValue(result.traffic_multiplier_after)}x</strong>
+            </div>
+
+            <div class="decision-item">
+                Steering
+                <strong>${displayValue(result.steering_mode_before)} → ${displayValue(result.steering_mode_after)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Max PRB
+                <strong>${displayValue(beforeMax.prb_utilization_pct)}% → ${displayValue(afterMax.prb_utilization_pct)}%</strong>
+            </div>
+
+            <div class="decision-item">
+                Worst Cell
+                <strong>${displayValue(afterMax.cell_id)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Accepted Config Revision
+                <strong>${result.active_version || "-"} / UNCHANGED</strong>
+            </div>
+        `;
+
+        renderWorkflowSteps(
+            result.steps
+        );
+
+        hideCandidateSections();
+        await refreshAfterOperation();
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    }
+
+    catch (error) {
+        showError(error);
+    }
+}
+
+
 async function runSelfHealing() {
 
     try {
@@ -5875,12 +6023,23 @@ async function runSelfHealing() {
                 : "decision-panel decision-warning";
 
 
+            const faultType =
+                (result.fault || {}).type;
+
             document.getElementById(
                 "decision-headline"
             ).textContent =
                 result.full_safe_envelope_restored
-                ? "SELF-HEAL COMPLETED - ACTIVE RAN RECOVERED"
-                : "RF FAULT RECOVERED - BASELINE CAPACITY ISSUE REMAINS";
+                ? (
+                    faultType === "CAPACITY_SPIKE"
+                    ? "SELF-HEAL COMPLETED - CAPACITY RECOVERED"
+                    : "SELF-HEAL COMPLETED - ACTIVE RAN RECOVERED"
+                )
+                : (
+                    faultType === "CAPACITY_SPIKE"
+                    ? "CAPACITY REMEDIATION INCOMPLETE"
+                    : "RF FAULT RECOVERED - SAFETY FINDING REMAINS"
+                );
         }
 
         else {
@@ -5893,7 +6052,7 @@ async function runSelfHealing() {
                 "decision-headline"
             ).textContent =
                 result.status === "NO_ACTION"
-                ? "SELF-HEAL: NO ACTIVE INJECTED RF FAULT"
+                ? "SELF-HEAL: NO ACTIVE INJECTED FAULT"
                 : "SELF-HEAL BLOCKED";
         }
 
@@ -5928,6 +6087,21 @@ async function runSelfHealing() {
             <div class="decision-item">
                 Config Restored
                 <strong>${result.configuration_restored === true ? "YES" : result.configuration_restored === false ? "NO" : "-"}</strong>
+            </div>
+
+            <div class="decision-item">
+                Traffic Multiplier
+                <strong>${displayValue(result.traffic_multiplier)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Steering
+                <strong>${displayValue(result.steering_mode_before)} → ${displayValue(result.steering_mode_after)}</strong>
+            </div>
+
+            <div class="decision-item">
+                Max PRB
+                <strong>${displayValue((result.max_prb_before || {}).prb_utilization_pct)}% → ${displayValue((result.max_prb_after || {}).prb_utilization_pct)}%</strong>
             </div>
 
             <div class="decision-item">
