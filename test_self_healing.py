@@ -529,7 +529,7 @@ no_action_check = (
     no_action[
         "reason"
     ]
-    == "NO_ACTIVE_INJECTED_RF_FAULT"
+    == "NO_ACTIVE_INJECTED_FAULT"
     and
     no_action[
         "configuration_changed"
