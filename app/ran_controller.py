@@ -782,6 +782,54 @@ class RanAutomationController:
             )
 
 
+    def get_optimization_observation(
+        self
+    ):
+        """
+        Return one consistent read-only observation for optimization.
+
+        The periodic evaluator needs active KPI state, current RAN
+        configuration and the last accepted known-good recovery target
+        from the same controller instant. Returning them under one lock
+        avoids a recommendation being built from several inconsistent
+        reads while another workflow changes controller state.
+
+        This method does not mutate RAN or controller state.
+        """
+
+        with self._lock:
+
+            return {
+
+                "active_version":
+                    self.active_version,
+
+                "recovery_target_version":
+                    self._recovery_target_version,
+
+                "rollout_state":
+                    self._rollout_state,
+
+                "last_action":
+                    self._last_action,
+
+                "fault_state":
+                    deepcopy(self._fault_state),
+
+                "steering_mode":
+                    self._steering_mode,
+
+                "snapshot":
+                    deepcopy(self._active_snapshot),
+
+                "active_sites":
+                    deepcopy(self._active_sites),
+
+                "recovery_target_sites":
+                    deepcopy(self._recovery_target_sites),
+            }
+
+
     def get_events(
         self,
         limit=None

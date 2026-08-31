@@ -24,19 +24,19 @@ The lab demonstrates how platform health, RAN-domain validation and automated re
 
 ## Current Lab Version
 
-Current application release:
+Current application release candidate:
 
 ```text
-APP-v2.2
+APP-v2.3.1
 ```
 
-Current immutable Kubernetes image used by the final validated lab:
+Current immutable Kubernetes image for the v2.3 evaluator update:
 
 ```text
-ran-automation-resilience-lab:v2.2.2
+ran-automation-resilience-lab:v2.3.1
 ```
 
-The final v2.2.2 regression and Kubernetes validation demonstrated:
+Version v2.3.1 extends the previously validated v2.2.2 baseline with a periodic read-only optimization evaluator. The v2.2.2 regression and Kubernetes validation demonstrated:
 
 - healthy default RAN state across all traffic profiles
 - guarded configuration promotion
@@ -344,6 +344,38 @@ Recovery does not create a new RAN configuration revision because the accepted R
 
 ---
 
+### 4. Periodic optimization evaluator (v2.3)
+
+The v2.3 update adds a small continuous observe/evaluate loop. It runs every 60 seconds and produces a concrete cell-level recommendation while keeping automatic RAN actuation disabled.
+
+```text
+OBSERVE current KPI / fault state
+        |
+        v
+CLASSIFY
+        |
+        +--> HEALTHY -----------------> NO_ACTION
+        |
+        +--> RF fault ----------------> restore known-good TX recommendation
+        |
+        +--> CAPACITY_CONGESTION -----> traffic-steering recommendation
+        |
+        +--> weak coverage -----------> +3 dB TX candidate for guarded evaluation
+        |
+        +--> interference suspected --> downtilt candidate for engineering review
+        |
+        v
+RECOMMEND ONLY
+
+Automatic actuation: DISABLED
+```
+
+The evaluator deliberately reuses the existing controller state and domain model instead of adding fake AI or vendor-specific RAN logic. A manual `Evaluate now` endpoint is provided for demonstration, but it is also read-only.
+
+This implementation is intentionally single-process and in-memory. Production autonomous actuation would additionally require authorization, durable state, auditability, idempotency, distributed coordination / leader election and explicit rollout policies.
+
+---
+
 ## Important Engineering Principle: Match the Actuator to the Failure
 
 Different failure classes require different remediation.
@@ -465,6 +497,9 @@ GET  /self-healing/status
 POST /self-healing/inject-rf-fault
 POST /self-healing/inject-capacity-spike
 POST /self-healing/run
+
+GET  /optimization/status
+POST /optimization/evaluate-now
 ```
 
 Legacy configuration endpoints intentionally return HTTP 410 where applicable.
@@ -635,8 +670,10 @@ The lab contains deterministic regression tests for:
 - RF self-healing
 - healthy baseline across traffic profiles
 - capacity self-healing
+- periodic optimization recommendation logic
+- read-only evaluator / dashboard widget injection
 
-The final full regression suite passed after v2.2.2.
+The full v2.2.2 regression suite passed before the v2.3 evaluator extension. The v2.3 package adds a focused evaluator regression test that should be run together with the existing RF and capacity regression tests before committing the update.
 
 Important final validated results include:
 
@@ -664,6 +701,7 @@ ran-automation-resilience-lab/
 |   ├── main.py
 |   ├── dashboard.py
 |   ├── ran_controller.py
+|   ├── optimization_evaluator.py
 |   ├── ran_engine.py
 |   ├── rf_model.py
 |   ├── traffic_model.py
@@ -698,6 +736,8 @@ The project is designed to practice the kind of thinking required when operating
 - define guardrails and acceptance criteria
 - maintain known-good state
 - select remediation based on failure class
+- continuously evaluate RAN state without automatically actuating changes
+- produce concrete cell-level recommendations with evidence
 - verify recovery rather than assuming success
 
 ---
@@ -706,18 +746,20 @@ The project is designed to practice the kind of thinking required when operating
 
 A concise description of the project is:
 
-> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
+> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. I also added a periodic read-only evaluator that produces cell-level optimization recommendations while intentionally keeping automatic actuation disabled. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
 
 ---
 
 ## Status
 
-Final v2.2.2 lab state:
+Validated baseline before the v2.3 evaluator extension:
 
 ```text
-Application runtime: validated
-Kubernetes deployment: validated
+v2.2.2 application runtime: validated
+v2.2.2 Kubernetes deployment: validated
 RF self-healing: PASS
 Capacity self-healing: PASS
-Full local regression suite: PASS
+v2.2.2 full local regression suite: PASS
 ```
+
+For v2.3.1, run `test_optimization_evaluator.py` plus the existing self-healing and capacity regression tests, then verify the Kubernetes rollout and `/optimization/status` before committing the update.

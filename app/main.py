@@ -28,6 +28,7 @@ real operator BTS locations.
 
 import os
 
+from contextlib import asynccontextmanager
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -36,6 +37,11 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.dashboard import DASHBOARD_HTML
+
+from app.optimization_evaluator import (
+    PeriodicOptimizationEvaluator,
+    inject_optimization_widget,
+)
 
 from app.jesenice_scenario import (
     SCENARIO_METADATA,
@@ -63,6 +69,24 @@ from app.ran_guardrails import (
 
 
 # =========================================================
+# FASTAPI APPLICATION LIFESPAN
+# =========================================================
+
+@asynccontextmanager
+async def application_lifespan(app_instance):
+
+    # optimization_evaluator is created during module import below.
+    # The name is resolved when the application actually starts.
+    optimization_evaluator.start()
+
+    try:
+        yield
+
+    finally:
+        optimization_evaluator.stop()
+
+
+# =========================================================
 # FASTAPI APPLICATION
 # =========================================================
 
@@ -72,7 +96,10 @@ app = FastAPI(
         "RAN Automation Delivery & Resilience Lab",
 
     version=
-        "2.2"
+        "2.3.1",
+
+    lifespan=
+        application_lifespan
 )
 
 
@@ -88,13 +115,24 @@ ENVIRONMENT_NAME = os.getenv(
 
 APPLICATION_RELEASE = os.getenv(
     "APPLICATION_RELEASE",
-    "APP-v2.2"
+    "APP-v2.3.1"
 )
 
 
 RAN_ADAPTER_URL = os.getenv(
     "RAN_ADAPTER_URL",
     "http://127.0.0.1:8000"
+)
+
+
+OPTIMIZATION_INTERVAL_SECONDS = max(
+    10.0,
+    float(
+        os.getenv(
+            "OPTIMIZATION_INTERVAL_SECONDS",
+            "60"
+        )
+    )
 )
 
 
@@ -133,6 +171,14 @@ controller = (
 
         steering_mode=
             "LOAD_AWARE"
+    )
+)
+
+
+optimization_evaluator = (
+    PeriodicOptimizationEvaluator(
+        controller=controller,
+        interval_seconds=OPTIMIZATION_INTERVAL_SECONDS
     )
 )
 
@@ -1441,7 +1487,41 @@ def get_safety_score_data():
 )
 def dashboard():
 
-    return DASHBOARD_HTML
+    return inject_optimization_widget(
+        DASHBOARD_HTML
+    )
+
+
+# =========================================================
+# PERIODIC OPTIMIZATION EVALUATOR
+# =========================================================
+
+@app.get(
+    "/optimization/status"
+)
+def get_optimization_status():
+    """
+    Return the latest read-only optimization recommendation and
+    recent evaluator history. Automatic RAN actuation is disabled.
+    """
+
+    return optimization_evaluator.get_status()
+
+
+@app.post(
+    "/optimization/evaluate-now"
+)
+def evaluate_optimization_now():
+    """
+    Trigger one immediate read-only evaluation for demo / inspection.
+
+    This endpoint does not call guarded_apply(), run_self_healing() or
+    any other state-changing controller operation.
+    """
+
+    return optimization_evaluator.evaluate_now(
+        trigger="MANUAL"
+    )
 
 
 # =========================================================
