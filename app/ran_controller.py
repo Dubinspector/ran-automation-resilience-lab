@@ -783,51 +783,78 @@ class RanAutomationController:
 
 
     def get_optimization_observation(
-        self
+        self,
+        weather=None,
+        simulation_timestamp=None
     ):
         """
-        Return one consistent read-only observation for optimization.
+        Capture one consistent read-only optimization context.
 
-        The periodic evaluator needs active KPI state, current RAN
-        configuration and the last accepted known-good recovery target
-        from the same controller instant. Returning them under one lock
-        avoids a recommendation being built from several inconsistent
-        reads while another workflow changes controller state.
+        The controller lock is held only long enough to copy configuration
+        and controller state. Weather resolution and the fresh network
+        evaluation happen after the lock is released so the periodic
+        optimizer does not hold the controller RLock while running the
+        expensive RF / traffic model.
 
-        This method does not mutate RAN or controller state.
+        The returned active_sites snapshot is immutable from the optimizer's
+        point of view. Every optimization candidate is evaluated against the
+        same weather, traffic clock, traffic multiplier, steering mode and
+        area-demand multipliers.
+
+        This method does not mutate configuration, accepted revision, fault
+        state, steering policy or the controller's active snapshot.
         """
 
         with self._lock:
 
-            return {
+            active_version = self.active_version
+            recovery_target_version = self._recovery_target_version
+            rollout_state = self._rollout_state
+            last_action = self._last_action
+            fault_state = deepcopy(self._fault_state)
+            steering_mode = self._steering_mode
+            traffic_multiplier = self._traffic_multiplier
+            area_traffic_multipliers = deepcopy(
+                self._area_traffic_multipliers
+            )
+            active_sites = deepcopy(self._active_sites)
+            recovery_target_sites = deepcopy(
+                self._recovery_target_sites
+            )
 
-                "active_version":
-                    self.active_version,
+        # Resolve one context after releasing the controller lock.
+        observation_weather = self._resolve_weather_snapshot(weather)
+        observation_simulation_timestamp = (
+            self._resolve_simulation_timestamp(simulation_timestamp)
+        )
 
-                "recovery_target_version":
-                    self._recovery_target_version,
+        # Fresh read-only baseline observation. Do NOT assign this result to
+        # self._active_snapshot; the periodic evaluator must not alter
+        # controller state merely by observing it.
+        snapshot = evaluate_ran_state(
+            active_sites,
+            weather=observation_weather,
+            simulation_timestamp=observation_simulation_timestamp,
+            traffic_multiplier=traffic_multiplier,
+            steering_mode=steering_mode,
+            area_traffic_multipliers=area_traffic_multipliers,
+        )
 
-                "rollout_state":
-                    self._rollout_state,
-
-                "last_action":
-                    self._last_action,
-
-                "fault_state":
-                    deepcopy(self._fault_state),
-
-                "steering_mode":
-                    self._steering_mode,
-
-                "snapshot":
-                    deepcopy(self._active_snapshot),
-
-                "active_sites":
-                    deepcopy(self._active_sites),
-
-                "recovery_target_sites":
-                    deepcopy(self._recovery_target_sites),
-            }
+        return {
+            "active_version": active_version,
+            "recovery_target_version": recovery_target_version,
+            "rollout_state": rollout_state,
+            "last_action": last_action,
+            "fault_state": fault_state,
+            "steering_mode": steering_mode,
+            "traffic_multiplier": traffic_multiplier,
+            "area_traffic_multipliers": area_traffic_multipliers,
+            "weather": deepcopy(observation_weather),
+            "simulation_timestamp": observation_simulation_timestamp,
+            "snapshot": deepcopy(snapshot),
+            "active_sites": active_sites,
+            "recovery_target_sites": recovery_target_sites,
+        }
 
 
     def get_events(

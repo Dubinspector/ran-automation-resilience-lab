@@ -96,7 +96,7 @@ app = FastAPI(
         "RAN Automation Delivery & Resilience Lab",
 
     version=
-        "2.3.1",
+        "2.4.0",
 
     lifespan=
         application_lifespan
@@ -115,7 +115,7 @@ ENVIRONMENT_NAME = os.getenv(
 
 APPLICATION_RELEASE = os.getenv(
     "APPLICATION_RELEASE",
-    "APP-v2.3.1"
+    "APP-v2.4.0"
 )
 
 
@@ -131,6 +131,28 @@ OPTIMIZATION_INTERVAL_SECONDS = max(
         os.getenv(
             "OPTIMIZATION_INTERVAL_SECONDS",
             "60"
+        )
+    )
+)
+
+
+OPTIMIZATION_MAX_TARGET_CELLS = max(
+    1,
+    int(
+        os.getenv(
+            "OPTIMIZATION_MAX_TARGET_CELLS",
+            "3"
+        )
+    )
+)
+
+
+OPTIMIZATION_MAX_CANDIDATES = max(
+    1,
+    int(
+        os.getenv(
+            "OPTIMIZATION_MAX_CANDIDATES",
+            "18"
         )
     )
 )
@@ -178,7 +200,9 @@ controller = (
 optimization_evaluator = (
     PeriodicOptimizationEvaluator(
         controller=controller,
-        interval_seconds=OPTIMIZATION_INTERVAL_SECONDS
+        interval_seconds=OPTIMIZATION_INTERVAL_SECONDS,
+        max_target_cells=OPTIMIZATION_MAX_TARGET_CELLS,
+        max_candidate_evaluations=OPTIMIZATION_MAX_CANDIDATES
     )
 )
 
@@ -1501,7 +1525,7 @@ def dashboard():
 )
 def get_optimization_status():
     """
-    Return the latest read-only optimization recommendation and
+    Return the latest network-wide read-only optimization search and
     recent evaluator history. Automatic RAN actuation is disabled.
     """
 

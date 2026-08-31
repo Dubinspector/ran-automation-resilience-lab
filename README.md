@@ -27,16 +27,18 @@ The lab demonstrates how platform health, RAN-domain validation and automated re
 Current application release candidate:
 
 ```text
-APP-v2.3.1
+APP-v2.4.0
 ```
 
-Current immutable Kubernetes image for the v2.3 evaluator update:
+Current immutable Kubernetes image candidate for the v2.4 optimizer update:
 
 ```text
-ran-automation-resilience-lab:v2.3.1
+ran-automation-resilience-lab:v2.4.0
 ```
 
-Version v2.3.1 extends the previously validated v2.2.2 baseline with a periodic read-only optimization evaluator. The v2.2.2 regression and Kubernetes validation demonstrated:
+Version v2.4.0 extends the validated v2.3.1 periodic evaluator into a bounded network-wide read-only optimizer. It screens the complete configured-cell inventory, evaluates a limited set of concrete RF / steering alternatives through the existing physics-inspired RF + UE + traffic model under one frozen context, rejects unsafe candidates with the existing guardrails, and recommends only a candidate with a meaningful positive network-wide objective gain. Automatic actuation remains disabled.
+
+The previously validated v2.2.2/v2.3.1 baseline demonstrated:
 
 - healthy default RAN state across all traffic profiles
 - guarded configuration promotion
@@ -344,35 +346,63 @@ Recovery does not create a new RAN configuration revision because the accepted R
 
 ---
 
-### 4. Periodic optimization evaluator (v2.3)
+### 4. Network-wide read-only optimization evaluator (v2.4)
 
-The v2.3 update adds a small continuous observe/evaluate loop. It runs every 60 seconds and produces a concrete cell-level recommendation while keeping automatic RAN actuation disabled.
+The v2.4 update separates **safety** from **optimality**. A configuration can PASS guardrails and still be suboptimal. Every 60 seconds the evaluator therefore performs:
 
 ```text
-OBSERVE current KPI / fault state
+CAPTURE one frozen context
+weather + traffic clock + traffic multiplier + UE demand context
         |
         v
-CLASSIFY
-        |
-        +--> HEALTHY -----------------> NO_ACTION
-        |
-        +--> RF fault ----------------> restore known-good TX recommendation
-        |
-        +--> CAPACITY_CONGESTION -----> traffic-steering recommendation
-        |
-        +--> weak coverage -----------> +3 dB TX candidate for guarded evaluation
-        |
-        +--> interference suspected --> downtilt candidate for engineering review
+RE-EVALUATE complete active RAN
         |
         v
-RECOMMEND ONLY
+SCREEN ALL CONFIGURED CELLS
+        |
+        v
+SHORTLIST highest-priority opportunities
+        |
+        v
+BOUNDED SINGLE-ACTUATOR SEARCH
+TX power / electrical tilt / traffic steering
+        |
+        v
+RF + UE association + interference + traffic + PRB
+        |
+        v
+EXISTING GUARDRAILS
+        |
+        +---- FAIL ---> reject candidate
+        |
+        v
+NETWORK-WIDE OBJECTIVE
+        |
+        +---- no meaningful gain ---> NO_ACTION
+        |
+        +---- best safe gain -------> OPPORTUNITY_FOUND
 
 Automatic actuation: DISABLED
 ```
 
-The evaluator deliberately reuses the existing controller state and domain model instead of adding fake AI or vendor-specific RAN logic. A manual `Evaluate now` endpoint is provided for demonstration, but it is also read-only.
+Factory and known-good values are only **candidate seeds**. The optimizer does not recommend a previous value because it is previous. Every candidate is re-simulated against the same context and must both PASS guardrails and improve the transparent network-wide objective.
 
-This implementation is intentionally single-process and in-memory. Production autonomous actuation would additionally require authorization, durable state, auditability, idempotency, distributed coordination / leader election and explicit rollout policies.
+The objective uses service continuity as a hard priority through the existing guardrails, then ranks safe candidates using network-wide changes such as weighted SINR, weighted RSRP, max/p95 PRB, degraded users and served ratio. A small change-magnitude penalty avoids recommending unnecessary parameter movement. The weights are learning-lab policy, not operator policy.
+
+The complete cell inventory is scanned, but the optimizer intentionally avoids brute-forcing all multi-cell combinations. It shortlists a few cells and evaluates a bounded number of single-actuator candidates. This preserves explainability and avoids combinatorial explosion and excessive CPU load.
+
+Bandwidth expansion is intentionally not searched because high PRB alone does not prove that additional licensed spectrum, carrier capability or hardware support is available.
+
+The dashboard exposes both:
+
+```text
+RAN guardrail state: HEALTHY / OUTSIDE_SAFE_ENVELOPE
+Optimization state:  NO_MEANINGFUL_GAIN / OPPORTUNITY_FOUND
+```
+
+This makes a safe-but-suboptimal case explicit. For example, a manually accepted TX-power increase can remain `PASS` while the optimizer later recommends a lower TX value if the full-network simulation predicts better neighbor SINR / PRB behavior without service loss.
+
+The evaluator is read-only. Any recommended RF change still requires the existing guarded-apply path; autonomous actuation would additionally require authorization, persistence, auditability, idempotency, distributed coordination / leader election and explicit rollout policies.
 
 ---
 
@@ -670,10 +700,13 @@ The lab contains deterministic regression tests for:
 - RF self-healing
 - healthy baseline across traffic profiles
 - capacity self-healing
-- periodic optimization recommendation logic
+- network-wide configured-cell screening
+- bounded physics/UE/weather candidate search
+- safe-but-suboptimal optimization detection
+- transparent network-wide objective ranking
 - read-only evaluator / dashboard widget injection
 
-The full v2.2.2 regression suite passed before the v2.3 evaluator extension. The v2.3 package adds a focused evaluator regression test that should be run together with the existing RF and capacity regression tests before committing the update.
+The v2.2.2 regression suite and v2.3.1 periodic evaluator were validated before this extension. The v2.4 package adds an acceptance scenario that intentionally promotes `CELL-JES-B-N28` from 40 to 45 dBm and verifies that any lower-TX recommendation is selected by re-simulated network outcome, not by rollback history. Run it together with the existing RF and capacity regression tests before committing the update.
 
 Important final validated results include:
 
@@ -737,7 +770,10 @@ The project is designed to practice the kind of thinking required when operating
 - maintain known-good state
 - select remediation based on failure class
 - continuously evaluate RAN state without automatically actuating changes
-- produce concrete cell-level recommendations with evidence
+- distinguish a safe configuration from an optimal configuration
+- scan the full configured-cell inventory and bound the candidate search
+- rank safe candidates by transparent network-wide RF / service / capacity evidence
+- produce concrete cell-level recommendations with predicted network impact
 - verify recovery rather than assuming success
 
 ---
@@ -746,13 +782,13 @@ The project is designed to practice the kind of thinking required when operating
 
 A concise description of the project is:
 
-> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. I also added a periodic read-only evaluator that produces cell-level optimization recommendations while intentionally keeping automatic actuation disabled. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
+> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. I also added a periodic network-wide read-only optimizer that screens all configured cells, re-simulates bounded RF and traffic-steering alternatives under one frozen context, rejects unsafe candidates with guardrails and returns a concrete cell-level recommendation only when the predicted network-wide outcome improves. Automatic actuation remains intentionally disabled. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
 
 ---
 
 ## Status
 
-Validated baseline before the v2.3 evaluator extension:
+Validated baseline before the v2.4 network-wide optimizer extension:
 
 ```text
 v2.2.2 application runtime: validated
@@ -762,4 +798,4 @@ Capacity self-healing: PASS
 v2.2.2 full local regression suite: PASS
 ```
 
-For v2.3.1, run `test_optimization_evaluator.py` plus the existing self-healing and capacity regression tests, then verify the Kubernetes rollout and `/optimization/status` before committing the update.
+For v2.4.0, run `test_optimization_evaluator.py` plus the existing self-healing and capacity regression tests. Then run a container startup/API smoke test, deploy the immutable `v2.4.0` image, verify `/optimization/status`, and confirm the safe-but-suboptimal 45 dBm scenario before committing the update.
