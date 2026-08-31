@@ -23,13 +23,13 @@ spec:
       containers:
         - name: ran-automation
 
-          image: ran-automation-resilience-lab:v2.4.0
+          image: ran-automation-resilience-lab:v2.6.0-r1
 
           imagePullPolicy: IfNotPresent
 
           env:
             - name: APPLICATION_RELEASE
-              value: "APP-v2.4.0"
+              value: "APP-v2.6.0"
 
             - name: OPTIMIZATION_INTERVAL_SECONDS
               value: "60"
@@ -39,6 +39,31 @@ spec:
 
             - name: OPTIMIZATION_MAX_CANDIDATES
               value: "18"
+
+            - name: AI_ADVISOR_ENABLED
+              value: "true"
+
+            - name: AI_CONTROL_ENABLED
+              value: "true"
+
+            - name: AI_CONTROL_INTERVAL_SECONDS
+              value: "60"
+
+            - name: AI_CONTROL_BAD_DECISION_THRESHOLD
+              value: "5"
+
+            - name: AI_ADVISOR_MODEL
+              value: "gpt-5.6-luna"
+
+            - name: AI_ADVISOR_TIMEOUT_SECONDS
+              value: "30"
+
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-api-key
+                  key: OPENAI_API_KEY
+                  optional: true
 
           envFrom:
             - configMapRef:

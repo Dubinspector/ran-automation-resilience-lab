@@ -1049,6 +1049,7 @@ def run_network_optimization_search(
 
     context = {
         "source_active_version": local_observation.get("active_version"),
+        "weather": deepcopy(local_observation.get("weather") or {}),
         "weather_timestamp": (
             (local_observation.get("weather") or {}).get("timestamp")
         ),
@@ -1064,6 +1065,7 @@ def run_network_optimization_search(
     ranking_preview = [
         {
             "target_cell": candidate.get("target_cell"),
+            "target_antenna": candidate.get("target_antenna"),
             "parameter": candidate.get("parameter"),
             "current_value": candidate.get("current_value"),
             "target_value": candidate.get("target_value"),
@@ -1083,6 +1085,7 @@ def run_network_optimization_search(
             "ran_state": ran_state,
             "optimization_state": "NO_MEANINGFUL_GAIN",
             "target_cell": evidence.get("cell_id") if evidence else None,
+            "target_antenna": None,
             "scope_cells": [],
             "evidence": evidence,
             "recommended_action": "NO_ACTION",
@@ -1115,6 +1118,7 @@ def run_network_optimization_search(
         "ran_state": ran_state,
         "optimization_state": "OPPORTUNITY_FOUND",
         "target_cell": best.get("target_cell"),
+        "target_antenna": best.get("target_antenna"),
         "scope_cells": [best.get("target_cell")]
         if best.get("target_cell")
         else [],
@@ -1169,6 +1173,7 @@ class PeriodicOptimizationEvaluator:
         interval_seconds=60.0,
         max_target_cells=DEFAULT_MAX_TARGET_CELLS,
         max_candidate_evaluations=DEFAULT_MAX_CANDIDATE_EVALUATIONS,
+        background_enabled=True,
     ):
         self._controller = controller
         self._interval_seconds = max(10.0, float(interval_seconds))
@@ -1176,6 +1181,7 @@ class PeriodicOptimizationEvaluator:
         self._max_candidate_evaluations = max(
             1, int(max_candidate_evaluations)
         )
+        self._background_enabled = bool(background_enabled)
         self._state_lock = RLock()
         self._evaluation_lock = Lock()
         self._stop_event = Event()
@@ -1191,6 +1197,8 @@ class PeriodicOptimizationEvaluator:
 
     def start(self):
         with self._state_lock:
+            if not self._background_enabled:
+                return
             if self._running:
                 return
 
@@ -1258,6 +1266,7 @@ class PeriodicOptimizationEvaluator:
                     "ran_state": "EVALUATION_ERROR",
                     "optimization_state": "EVALUATION_ERROR",
                     "target_cell": None,
+                    "target_antenna": None,
                     "scope_cells": [],
                     "evidence": {},
                     "recommended_action": "NO_ACTION",
@@ -1289,8 +1298,13 @@ class PeriodicOptimizationEvaluator:
             thread_alive = bool(self._thread and self._thread.is_alive())
 
             return {
-                "status": "RUNNING" if self._running else "STOPPED",
+                "status": (
+                    "RUNNING" if self._running
+                    else "MANUAL_ONLY" if not self._background_enabled
+                    else "STOPPED"
+                ),
                 "worker_alive": thread_alive,
+                "background_enabled": self._background_enabled,
                 "interval_seconds": self._interval_seconds,
                 "evaluation_mode": "READ_ONLY_NETWORK_SEARCH",
                 "automatic_actuation": "DISABLED",

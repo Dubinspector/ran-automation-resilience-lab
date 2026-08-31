@@ -3739,6 +3739,107 @@ class RanAutomationController:
 
 
     # =====================================================
+    # AUTHORIZED SAFETY CHECKPOINT RESTORE
+    # =====================================================
+
+    def restore_safety_checkpoint(
+        self,
+        checkpoint_sites,
+        checkpoint_label=None,
+        weather=None,
+        simulation_timestamp=None,
+    ):
+        """
+        Force-restore a controller-owned verified healthy checkpoint.
+
+        This is intentionally separate from guarded_apply(). A normal
+        guarded change is blocked when the active RAN is already outside the
+        safe envelope; the safety supervisor therefore needs a separately
+        authorized rollback path after an AI-gated change has already been
+        promoted and later fails post-change verification.
+
+        The caller must provide a snapshot previously captured from this
+        controller while the RAN was verified healthy. The AI model never
+        supplies checkpoint content and never calls this method directly.
+        """
+
+        with self._lock:
+            previous_version = self.active_version
+
+            restore_weather = self._resolve_weather_snapshot(weather)
+            restore_simulation_timestamp = self._resolve_simulation_timestamp(
+                simulation_timestamp
+            )
+
+            target_sites = deepcopy(checkpoint_sites)
+            target_snapshot = self._evaluate_sites_for_context(
+                target_sites,
+                restore_weather,
+                restore_simulation_timestamp,
+            )
+
+            # Evaluate the restored state against the normal safety envelope.
+            # The restore is still performed even if external traffic/weather
+            # changed enough that the previously healthy configuration no
+            # longer recovers the network. That outcome is returned explicitly
+            # so the supervisor can open its circuit breaker and escalate to
+            # the existing recovery/troubleshooting path.
+            checkpoint_health = self._baseline_health_summary(
+                target_snapshot
+            )
+            checkpoint_guardrails = checkpoint_health["guardrails"]
+            rollback_verified = checkpoint_health.get("status") == "PASS"
+
+            self._active_sites = target_sites
+            self._active_snapshot = deepcopy(target_snapshot)
+            self._config_revision += 1
+
+            # The restored configuration is now the controller's accepted
+            # recovery target. This does not erase any independent injected
+            # fault state because an RF/capacity fault may be the real reason
+            # the rollback cannot recover service.
+            self._recovery_target_sites = deepcopy(target_sites)
+            self._recovery_target_version = self.active_version
+
+            self._rollout_state = (
+                "STABLE" if rollback_verified else "SAFETY_ROLLBACK_UNHEALTHY"
+            )
+            self._last_action = "SAFETY_CHECKPOINT_RESTORED"
+
+            self._record_event(
+                event_type="SAFETY_CHECKPOINT_RESTORED",
+                status="PASS" if rollback_verified else "FAIL",
+                message=(
+                    f"Safety checkpoint {checkpoint_label or 'UNLABELED'} "
+                    f"restored after AI-gated control verification failure."
+                ),
+                details={
+                    "previous_version": previous_version,
+                    "active_version": self.active_version,
+                    "checkpoint_label": checkpoint_label,
+                    "rollback_verified": rollback_verified,
+                    "weather_timestamp": restore_weather.get("timestamp"),
+                    "weather_source": restore_weather.get("source"),
+                    "weather_status": restore_weather.get("source_status"),
+                    "simulation_timestamp": restore_simulation_timestamp,
+                },
+            )
+
+            return {
+                "status": "RESTORED" if rollback_verified else "RESTORED_UNHEALTHY",
+                "previous_version": previous_version,
+                "active_version": self.active_version,
+                "checkpoint_label": checkpoint_label,
+                "rollback_verified": rollback_verified,
+                "weather": deepcopy(restore_weather),
+                "simulation_timestamp": restore_simulation_timestamp,
+                "baseline_health": deepcopy(checkpoint_health),
+                "guardrails": deepcopy(checkpoint_guardrails),
+                "service": deepcopy(target_snapshot.get("service") or {}),
+            }
+
+
+    # =====================================================
     # RESTORE FACTORY BASELINE
     # =====================================================
 

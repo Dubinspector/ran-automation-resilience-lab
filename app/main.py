@@ -43,6 +43,17 @@ from app.optimization_evaluator import (
     inject_optimization_widget,
 )
 
+from app.ai_advisor import (
+    AIEngineeringAdvisor,
+    build_ai_advisor_input,
+    inject_ai_advisor_widget,
+)
+
+from app.ai_control_loop import (
+    AIControlSupervisor,
+    inject_ai_control_widget,
+)
+
 from app.jesenice_scenario import (
     SCENARIO_METADATA,
 )
@@ -78,11 +89,13 @@ async def application_lifespan(app_instance):
     # optimization_evaluator is created during module import below.
     # The name is resolved when the application actually starts.
     optimization_evaluator.start()
+    ai_control_supervisor.start()
 
     try:
         yield
 
     finally:
+        ai_control_supervisor.stop()
         optimization_evaluator.stop()
 
 
@@ -96,7 +109,7 @@ app = FastAPI(
         "RAN Automation Delivery & Resilience Lab",
 
     version=
-        "2.4.0",
+        "2.6.0",
 
     lifespan=
         application_lifespan
@@ -115,7 +128,7 @@ ENVIRONMENT_NAME = os.getenv(
 
 APPLICATION_RELEASE = os.getenv(
     "APPLICATION_RELEASE",
-    "APP-v2.4.0"
+    "APP-v2.6.0"
 )
 
 
@@ -153,6 +166,33 @@ OPTIMIZATION_MAX_CANDIDATES = max(
         os.getenv(
             "OPTIMIZATION_MAX_CANDIDATES",
             "18"
+        )
+    )
+)
+
+
+AI_CONTROL_ENABLED = str(
+    os.getenv("AI_CONTROL_ENABLED", "false")
+).strip().lower() in {"1", "true", "yes", "on"}
+
+
+AI_CONTROL_INTERVAL_SECONDS = max(
+    30.0,
+    float(
+        os.getenv(
+            "AI_CONTROL_INTERVAL_SECONDS",
+            "60"
+        )
+    )
+)
+
+
+AI_CONTROL_BAD_DECISION_THRESHOLD = max(
+    1,
+    int(
+        os.getenv(
+            "AI_CONTROL_BAD_DECISION_THRESHOLD",
+            "5"
         )
     )
 )
@@ -202,8 +242,14 @@ optimization_evaluator = (
         controller=controller,
         interval_seconds=OPTIMIZATION_INTERVAL_SECONDS,
         max_target_cells=OPTIMIZATION_MAX_TARGET_CELLS,
-        max_candidate_evaluations=OPTIMIZATION_MAX_CANDIDATES
+        max_candidate_evaluations=OPTIMIZATION_MAX_CANDIDATES,
+        background_enabled=not AI_CONTROL_ENABLED
     )
+)
+
+
+ai_advisor = AIEngineeringAdvisor(
+    automatic_calls=AI_CONTROL_ENABLED
 )
 
 
@@ -1299,6 +1345,17 @@ def build_active_alarms():
     return alarms
 
 
+ai_control_supervisor = AIControlSupervisor(
+    controller=controller,
+    optimizer_evaluator=optimization_evaluator,
+    ai_advisor=ai_advisor,
+    alarm_provider=build_active_alarms,
+    enabled=AI_CONTROL_ENABLED,
+    interval_seconds=AI_CONTROL_INTERVAL_SECONDS,
+    bad_decision_threshold=AI_CONTROL_BAD_DECISION_THRESHOLD,
+)
+
+
 # =========================================================
 # EXTERNAL PRECHECK
 # =========================================================
@@ -1511,8 +1568,12 @@ def get_safety_score_data():
 )
 def dashboard():
 
-    return inject_optimization_widget(
-        DASHBOARD_HTML
+    return inject_ai_control_widget(
+        inject_ai_advisor_widget(
+            inject_optimization_widget(
+                DASHBOARD_HTML
+            )
+        )
     )
 
 
@@ -1525,8 +1586,9 @@ def dashboard():
 )
 def get_optimization_status():
     """
-    Return the latest network-wide read-only optimization search and
-    recent evaluator history. Automatic RAN actuation is disabled.
+    Return the latest network-wide deterministic optimization search and
+    recent evaluator history. The optimizer itself remains read-only; any
+    v2.6 actuation is owned by the separate AI control safety supervisor.
     """
 
     return optimization_evaluator.get_status()
@@ -1546,6 +1608,121 @@ def evaluate_optimization_now():
     return optimization_evaluator.evaluate_now(
         trigger="MANUAL"
     )
+
+
+# =========================================================
+# OPTIONAL AI ENGINEERING ADVISOR
+# =========================================================
+
+@app.get(
+    "/ai-advisor/status"
+)
+def get_ai_advisor_status():
+    """
+    Return advisor availability and the last cached assessment.
+
+    No external AI call is made by this endpoint.
+    """
+
+    return ai_advisor.get_status()
+
+
+@app.get(
+    "/ai-advisor/input-preview"
+)
+def get_ai_advisor_input_preview():
+    """
+    Show the bounded structured JSON that would be sent to the AI provider.
+
+    This endpoint exposes no API key and performs no provider call.
+    """
+
+    optimization = optimization_evaluator.get_status().get(
+        "last_evaluation"
+    )
+
+    if not optimization:
+        raise HTTPException(
+            status_code=409,
+            detail="No optimization evaluation is available yet."
+        )
+
+    return build_ai_advisor_input(
+        optimization,
+        alarms=build_active_alarms()
+    )
+
+
+@app.post(
+    "/ai-advisor/analyze-latest"
+)
+def analyze_latest_with_ai(force: bool = False):
+    """
+    Generate (or reuse) an AI engineering explanation for the latest
+    deterministic optimizer result.
+
+    This endpoint only returns the bounded AI decision/assessment. It does
+    not call guarded-apply itself. Autonomous use of APPROVE decisions is
+    owned by the separate safety supervisor when AI_CONTROL_ENABLED=true.
+    """
+
+    optimization = optimization_evaluator.get_status().get(
+        "last_evaluation"
+    )
+
+    if not optimization:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No optimization evaluation is available yet. "
+                "Run /optimization/evaluate-now first."
+            )
+        )
+
+    advisor_input = build_ai_advisor_input(
+        optimization,
+        alarms=build_active_alarms()
+    )
+
+    return ai_advisor.analyze(
+        advisor_input,
+        force=force
+    )
+
+
+# =========================================================
+# AI-GATED CONTROL SAFETY SUPERVISOR
+# =========================================================
+
+@app.get(
+    "/ai-control/status"
+)
+def get_ai_control_status():
+    return ai_control_supervisor.get_status()
+
+
+@app.post(
+    "/ai-control/run-once"
+)
+def run_ai_control_once():
+    return ai_control_supervisor.run_cycle(
+        trigger="MANUAL"
+    )
+
+
+@app.post(
+    "/ai-control/reset-circuit-breaker"
+)
+def reset_ai_control_circuit_breaker():
+    result = ai_control_supervisor.reset_circuit_breaker()
+
+    if result.get("status") == "RESET_BLOCKED_RAN_UNHEALTHY":
+        raise HTTPException(
+            status_code=409,
+            detail=result
+        )
+
+    return result
 
 
 # =========================================================
@@ -1595,6 +1772,7 @@ def get_status():
         "baseline_health": baseline_health,
         "service": observation["service"],
         "self_healing": controller.get_self_healing_state(),
+        "ai_control": ai_control_supervisor.get_status(),
         "normal_traffic_multiplier": NORMAL_TRAFFIC_MULTIPLIER,
     }
 

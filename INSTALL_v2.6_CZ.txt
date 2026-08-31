@@ -1,0 +1,516 @@
+RAN AUTOMATION & RESILIENCE LAB - v2.6.0
+AI-GATED CLOSED LOOP + SAFETY CHECKPOINT + CIRCUIT BREAKER
+============================================================
+
+CIL
+---
+v2.6 zachovava deterministicky v2.4 optimizer jako autoritu pro fyziku,
+candidate generation, guardrails a objective scoring. AI NESMI menit target cell,
+parameter ani target value. AI smi vratit pouze:
+
+APPROVE / HOLD / ABSTAIN
+
+Pokud AI vrati APPROVE, samostatny deterministicky supervisor muze poslat PRESNE
+ten optimizer candidate pres existujici guarded_apply(). Zmena se nepovazuje za
+plne overenou okamzite. Pred apply se ulozi posledni verified-healthy checkpoint.
+Po apply musi projit okamzita health kontrola a pak dalsi observation cycle.
+
+FAIL / UNHEALTHY po AI zmene:
+-> force restore predchoziho verified-healthy checkpointu
+-> verify rollback
+-> bad-AI outcome strike
+
+5 po sobe jdoucich bad AI-approved outcomes:
+-> circuit breaker OPEN
+-> dalsi AI-gated actuation DISABLED
+-> optimizer zustava read-only dostupny
+-> manual reset je povolen jen kdyz je aktualni RAN healthy
+
+Provider timeout / missing key / malformed AI output / HOLD / ABSTAIN:
+-> zadny state-changing call
+-> strike se NEPOCITA
+
+V2.6 auto-actuator allowlist:
+- tx_power_dbm
+- electrical_tilt_deg
+
+TRAFFIC_STEERING zustava mimo AI auto-actuation a patri do oddelene capacity
+recovery / policy cesty.
+
+Default loop interval:
+AI_CONTROL_INTERVAL_SECONDS=60
+AI_CONTROL_BAD_DECISION_THRESHOLD=5
+
+Supervisor neprekryva cykly. Pokud kompletni optimizer + AI + verification trva
+dele nez 60 s, interval zvys. Status vystavuje duration_seconds a interval_overrun.
+
+
+PHASE 0 - PRED ZMENOU
+=====================
+
+V rootu projektu:
+
+cd C:\Users\tomas\ran-automation-resilience-lab
+
+git status --short
+
+git branch --show-current
+
+Ocekavani:
+- branch main
+- pred extrakci idealne clean working tree
+
+NEPOKRACUJ, pokud mas necommitnute zmeny, ktere nechces prepsat.
+
+
+PHASE 1 - EXTRAKCE v2.6 PATCH PACKAGE
+======================================
+
+Predpokladany soubor:
+C:\Users\tomas\Downloads\ran-automation-v2.6-ai-guarded-closed-loop.zip
+
+Extrahuj pres Python, aby se vyhnulo problematickemu PowerShell quotingu:
+
+python -c "import zipfile,pathlib; z=pathlib.Path(r'C:\Users\tomas\Downloads\ran-automation-v2.6-ai-guarded-closed-loop.zip'); assert z.exists(), f'Missing file: {z}'; zipfile.ZipFile(z).extractall(r'C:\Users\tomas\ran-automation-resilience-lab'); print('V2.6 PACKAGE EXTRACTED')"
+
+git status --short
+
+Relevantni zmeny maji zahrnovat:
+M README.md
+M app/ai_advisor.py
+M app/main.py
+M app/optimization_evaluator.py
+M app/ran_controller.py
+M k8s/deployment.yaml
+M test_ai_advisor.py
+?? app/ai_control_loop.py
+?? test_ai_control_loop.py
+?? INSTALL_v2.6_CZ.txt
+
+
+PHASE 2 - STATIC ACCEPTANCE
+===========================
+
+python -m py_compile C:\Users\tomas\ran-automation-resilience-lab\app\main.py C:\Users\tomas\ran-automation-resilience-lab\app\ai_advisor.py C:\Users\tomas\ran-automation-resilience-lab\app\ai_control_loop.py C:\Users\tomas\ran-automation-resilience-lab\app\optimization_evaluator.py C:\Users\tomas\ran-automation-resilience-lab\app\ran_controller.py C:\Users\tomas\ran-automation-resilience-lab\test_ai_advisor.py C:\Users\tomas\ran-automation-resilience-lab\test_ai_control_loop.py C:\Users\tomas\ran-automation-resilience-lab\test_optimization_evaluator.py
+
+Bez vystupu = syntax PASS.
+
+Spust novy focused safety test:
+
+python C:\Users\tomas\ran-automation-resilience-lab\test_ai_control_loop.py
+
+Ocekavany konec:
+OVERALL V2.6 AI CONTROL SUPERVISOR TEST: PASS
+
+Tento test MOCKUJE AI a nic neplati. Overuje:
+- AI APPROVE vede pouze pres deterministic guarded_apply
+- HOLD neactuuje
+- provider failure neactuuje
+- HIGH risk approval je deterministicky blokovan
+- traffic steering neni v auto-actuator allowlistu
+- applied zmena ma pending verification
+- unhealthy next window -> force checkpoint rollback
+- bad-AI strike counter
+- 5 strikes -> circuit OPEN
+- open circuit -> optimizer read-only, zadne dalsi apply
+- reset je blokovan pri unhealthy RAN
+- healthy reset zavre circuit a vynuluje strikes
+
+Spust AI schema/regression test:
+
+python C:\Users\tomas\ran-automation-resilience-lab\test_ai_advisor.py
+
+Ocekavany konec:
+OVERALL V2.6 AI DECISION GATE TEST: PASS
+
+Test pouziva mocked provider a nema spotrebu API kreditu.
+
+Pak deterministic optimizer regression:
+
+python C:\Users\tomas\ran-automation-resilience-lab\test_optimization_evaluator.py
+
+Ocekavani:
+OVERALL V2.4 NETWORK OPTIMIZATION TEST: PASS
+
+Pak stare recovery regrese:
+
+python C:\Users\tomas\ran-automation-resilience-lab\test_self_healing.py
+
+python C:\Users\tomas\ran-automation-resilience-lab\test_v22_healthy_capacity.py
+
+Ocekavani:
+OVERALL SELF-HEALING TEST: PASS
+OVERALL V2.2 HEALTHY/CAPACITY TEST: PASS
+
+Nakonec:
+
+git diff --check
+
+git diff --stat
+
+STOP, pokud cokoli FAILne.
+
+
+PHASE 3 - BUILD IMMUTABLE IMAGE
+===============================
+
+docker build -t ran-automation-resilience-lab:v2.6.0-r1 C:\Users\tomas\ran-automation-resilience-lab
+
+docker image inspect ran-automation-resilience-lab:v2.6.0-r1 --format "{{.Id}}"
+
+Container import gate:
+
+docker run --rm ran-automation-resilience-lab:v2.6.0-r1 python -c "import app.main; print('CONTAINER IMPORT PASS')"
+
+Ocekavani:
+CONTAINER IMPORT PASS
+
+
+PHASE 4 - FAIL-CLOSED SMOKE BEZ API KEY
+========================================
+
+Nejprve overime, ze chybejici AI provider NIKDY nezpusobi actuation.
+
+cmd.exe /d /c "docker rm -f ran-v260-no-key >nul 2>&1"
+
+docker run -d --name ran-v260-no-key -p 18102:8000 -e APPLICATION_RELEASE=APP-v2.6.0 -e OPTIMIZATION_INTERVAL_SECONDS=60 -e OPTIMIZATION_MAX_TARGET_CELLS=3 -e OPTIMIZATION_MAX_CANDIDATES=18 -e AI_ADVISOR_ENABLED=true -e AI_CONTROL_ENABLED=true -e AI_CONTROL_INTERVAL_SECONDS=60 -e AI_CONTROL_BAD_DECISION_THRESHOLD=5 -e AI_ADVISOR_MODEL=gpt-5.6-luna -e AI_ADVISOR_TIMEOUT_SECONDS=30 ran-automation-resilience-lab:v2.6.0-r1
+
+python -c "import time; time.sleep(4)"
+
+App status:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18102/status',timeout=20)); print('Application:',d.get('application_release')); print('App health:',d.get('application_health')); print('RAN validation:',d.get('ran_validation')); c=d.get('ai_control') or {}; print('AI control:',c.get('status')); print('Circuit:',c.get('circuit_state'))"
+
+Manual AI-control cycle bez key:
+
+python -c "import json,urllib.request; req=urllib.request.Request('http://127.0.0.1:18102/ai-control/run-once',data=b'',method='POST'); d=json.load(urllib.request.urlopen(req,timeout=240)); print('Status:',d.get('status')); print('Actuation performed:',d.get('actuation_performed')); a=d.get('ai_result') or {}; print('AI status:',a.get('status'))"
+
+Ocekavani v pripade OPPORTUNITY_FOUND:
+Status: NO_AUTO_ACTION_AI_UNAVAILABLE
+Actuation performed: False
+AI status: NOT_CONFIGURED
+
+Pokud optimizer najde NO_MEANINGFUL_GAIN, je korektni:
+Status: NO_AUTO_ACTION_DETERMINISTIC_GATE
+Actuation performed: False
+
+V obou pripadech MUSI byt bez state-changing AI akce.
+
+Zastav smoke:
+
+docker stop ran-v260-no-key
+
+
+PHASE 5 - VYTVOR DOCASNY API-KEY ENV FILE
+==========================================
+
+Python getpass nevypise key do PowerShell historie:
+
+python -c "import getpass,pathlib; p=pathlib.Path(r'C:\Users\tomas\ran-openai.env'); key=getpass.getpass('Paste OpenAI API key (hidden): ').strip(); assert key, 'Empty API key'; p.write_text('OPENAI_API_KEY='+key+'\n',encoding='utf-8'); print('Temporary env file created:',p)"
+
+NEPOUZIVEJ type/Get-Content na tento soubor.
+
+
+PHASE 6 - REAL AI SMOKE NEJDRIV BEZ AUTO ACTUATION
+===================================================
+
+Prvni real provider call overime v porad safe mode s AI_CONTROL_ENABLED=false.
+
+cmd.exe /d /c "docker rm -f ran-v260-ai-readonly >nul 2>&1"
+
+docker run -d --name ran-v260-ai-readonly -p 18103:8000 --env-file C:\Users\tomas\ran-openai.env -e APPLICATION_RELEASE=APP-v2.6.0 -e OPTIMIZATION_INTERVAL_SECONDS=60 -e OPTIMIZATION_MAX_TARGET_CELLS=3 -e OPTIMIZATION_MAX_CANDIDATES=18 -e AI_ADVISOR_ENABLED=true -e AI_CONTROL_ENABLED=false -e AI_ADVISOR_MODEL=gpt-5.6-luna -e AI_ADVISOR_TIMEOUT_SECONDS=30 ran-automation-resilience-lab:v2.6.0-r1
+
+python -c "import time; time.sleep(4)"
+
+Run deterministic optimizer:
+
+python -c "import json,urllib.request; req=urllib.request.Request('http://127.0.0.1:18103/optimization/evaluate-now',data=b'',method='POST'); d=json.load(urllib.request.urlopen(req,timeout=240)); print('Evaluation:',d.get('evaluation_id')); print('RAN:',d.get('ran_state')); print('Optimization:',d.get('optimization_state')); print('Action:',d.get('recommended_action')); print('Target:',d.get('target_cell')); print('Value:',d.get('target_value'))"
+
+Inspect bounded AI input BEZ provider call:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18103/ai-advisor/input-preview',timeout=20)); print('Groups:',sorted(d.keys())); print('Cells scanned:',(d.get('current_state',{}).get('search_summary') or {}).get('configured_cells_scanned')); print('Optimizer action:',d.get('candidate_result',{}).get('recommended_action')); print('Contains API key:', 'OPENAI_API_KEY' in json.dumps(d))"
+
+Ocekavani:
+Contains API key: False
+
+ONE real AI decision/assessment call:
+
+python -c "import json,urllib.request; req=urllib.request.Request('http://127.0.0.1:18103/ai-advisor/analyze-latest',data=b'',method='POST'); d=json.load(urllib.request.urlopen(req,timeout=60)); a=d.get('assessment') or {}; o=d.get('optimizer_decision') or {}; print('Status:',d.get('status')); print('Direct AI actuation:',d.get('ai_actuation')); print('Optimizer:',o.get('recommended_action'),o.get('target_cell'),o.get('current_value'),'->',o.get('target_value')); print('AI decision:',a.get('control_decision')); print('Risk:',a.get('risk_level')); print('Confidence:',a.get('confidence')); print('Interpretation:',a.get('engineering_interpretation')); print('Cause:',a.get('likely_cause')); print('Verify:',a.get('recommended_verification')); print('Alternative:',a.get('alternative_hypothesis'))"
+
+Klicove:
+Status: AVAILABLE
+Direct AI actuation: DIRECT_DISABLED
+
+Tento endpoint sam NIC nemeni.
+
+Zastav:
+
+docker stop ran-v260-ai-readonly
+
+
+PHASE 7 - REAL BOUNDED CLOSED-LOOP DOCKER DEMO
+===============================================
+
+Ted teprve zapneme supervisor.
+
+cmd.exe /d /c "docker rm -f ran-v260-control >nul 2>&1"
+
+docker run -d --name ran-v260-control -p 18104:8000 --env-file C:\Users\tomas\ran-openai.env -e APPLICATION_RELEASE=APP-v2.6.0 -e OPTIMIZATION_INTERVAL_SECONDS=60 -e OPTIMIZATION_MAX_TARGET_CELLS=3 -e OPTIMIZATION_MAX_CANDIDATES=18 -e AI_ADVISOR_ENABLED=true -e AI_CONTROL_ENABLED=true -e AI_CONTROL_INTERVAL_SECONDS=60 -e AI_CONTROL_BAD_DECISION_THRESHOLD=5 -e AI_ADVISOR_MODEL=gpt-5.6-luna -e AI_ADVISOR_TIMEOUT_SECONDS=30 ran-automation-resilience-lab:v2.6.0-r1
+
+python -c "import time; time.sleep(4)"
+
+Supervisor status:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18104/ai-control/status',timeout=20)); print('Status:',d.get('status')); print('Mode:',d.get('mode')); print('Direct AI actuation:',d.get('direct_ai_actuation')); print('Interval:',d.get('interval_seconds')); print('Threshold:',d.get('bad_decision_threshold')); print('Circuit:',d.get('circuit_state')); print('Strikes:',d.get('consecutive_bad_ai_outcomes'))"
+
+Ocekavani:
+Status: RUNNING
+Direct AI actuation: DISABLED
+Interval: 60.0
+Threshold: 5
+Circuit: CLOSED
+Strikes: 0
+
+
+PHASE 8 - SAFE-BUT-SUBOPTIMAL 45 dBm DEMO
+==========================================
+
+DULEZITE:
+Nechceme cekat na nahodnou opportunity. Zname z v2.4 demo, ze 45 dBm muze byt
+safe, ale suboptimal. Nejprve jej explicitne promoted pres normalni guarded apply.
+
+python -c "import json,urllib.request; body=json.dumps({'cells':{'CELL-JES-B-N28':{'tx_power_dbm':45.0}}}).encode('utf-8'); req=urllib.request.Request('http://127.0.0.1:18104/ran-config/guarded-apply',data=body,headers={'Content-Type':'application/json'},method='POST'); d=json.load(urllib.request.urlopen(req,timeout=120)); print('Status:',d.get('status')); print('Active:',d.get('active_version')); print('Guardrail:',(d.get('guardrails') or {}).get('verdict'))"
+
+Ocekavani pro canonical lab scenario:
+Status: APPLIED
+Guardrail: PASS
+
+POZOR:
+Supervisor bezi automaticky po 60 s. Pokud chces presne kontrolovany manual step,
+proved 45 dBm apply a nasledujici /ai-control/run-once pred prvnim periodic tickem.
+
+Manual controlled cycle:
+
+python -c "import json,urllib.request; req=urllib.request.Request('http://127.0.0.1:18104/ai-control/run-once',data=b'',method='POST'); d=json.load(urllib.request.urlopen(req,timeout=300)); o=d.get('optimization') or {}; a=(d.get('ai_result') or {}).get('assessment') or {}; print('Control status:',d.get('status')); print('Optimizer:',o.get('recommended_action'),o.get('target_cell'),o.get('current_value'),'->',o.get('target_value')); print('Objective:',o.get('objective_gain')); print('Guardrail:',o.get('guardrail_verdict')); print('AI decision:',a.get('control_decision')); print('Risk:',a.get('risk_level')); print('Confidence:',a.get('confidence')); print('Actuation performed:',d.get('actuation_performed')); print('Circuit:',d.get('circuit_state'))"
+
+Mozne korektni vysledky:
+
+A) AI APPROVE + policy gate PASS:
+Control status: APPLIED_PENDING_VERIFICATION
+Actuation performed: True
+
+B) AI HOLD / ABSTAIN / risk gate:
+Control status: NO_AUTO_ACTION_POLICY_GATE
+Actuation performed: False
+
+AI neni hardcodovana k APPROVE. Bezpecna odpoved muze byt HOLD.
+
+Pokud A), zkontroluj pending:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18104/ai-control/status',timeout=20)); print('Pending:',bool(d.get('pending_verification'))); print('Checkpoint:',d.get('last_verified_checkpoint')); print('Strikes:',d.get('consecutive_bad_ai_outcomes')); print('Circuit:',d.get('circuit_state'))"
+
+Pak nech probehnout dalsi observation window. Protoze periodic worker bezi sam,
+pockej cca 65 s:
+
+python -c "import time; time.sleep(65)"
+
+A znovu:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18104/ai-control/status',timeout=20)); l=d.get('last_cycle') or {}; v=l.get('post_change_verification') or {}; print('Last cycle:',l.get('status')); print('Verification:',v.get('verification')); print('Pending:',bool(d.get('pending_verification'))); print('Strikes:',d.get('consecutive_bad_ai_outcomes')); print('Circuit:',d.get('circuit_state')); print('Duration:',l.get('duration_seconds')); print('Overrun:',l.get('interval_overrun'))"
+
+Healthy acceptance path:
+Verification: PASS
+Pending: False
+Strikes: 0
+Circuit: CLOSED
+
+Pokud Overrun: True, zvys AI_CONTROL_INTERVAL_SECONDS napr. na 90 nebo 120.
+Nezvysuj concurrency.
+
+
+PHASE 9 - CIRCUIT BREAKER TEST
+==============================
+
+REAL providerem ZAMERNE nedelame pet spatnych radio zmen jen kvuli demo.
+To by bylo drahe, pomale a nedeterministicke.
+
+Circuit breaker je deterministic regression acceptance v:
+
+test_ai_control_loop.py
+
+Tam je presne overeno:
+- 5 po sobe jdoucich bad AI-approved actuation outcomes
+- circuit OPEN
+- zadne dalsi apply
+- manual reset jen pri healthy baseline
+
+To je spravnejsi acceptance test nez nutit live LLM petkrat selhat.
+
+
+PHASE 10 - DOCKER LOGS / CLEANUP
+================================
+
+docker logs ran-v260-control --tail=150
+
+docker stop ran-v260-control
+
+
+PHASE 11 - KUBERNETES SECRET
+============================
+
+Nahrad predchozi lab Secret:
+
+kubectl delete secret openai-api-key --ignore-not-found
+
+kubectl create secret generic openai-api-key --from-env-file=C:\Users\tomas\ran-openai.env
+
+Over pouze metadata, NE data:
+
+kubectl get secret openai-api-key -o jsonpath="{.metadata.name}{'\n'}"
+
+Ocekavani:
+openai-api-key
+
+Ted smaz lokalni docasny env file:
+
+python -c "import pathlib; p=pathlib.Path(r'C:\Users\tomas\ran-openai.env'); p.unlink() if p.exists() else None; print('Temporary API-key file removed')"
+
+
+PHASE 12 - KUBERNETES ROLLOUT
+=============================
+
+kubectl apply -f C:\Users\tomas\ran-automation-resilience-lab\k8s\deployment.yaml
+
+kubectl rollout status deployment/ran-automation --timeout=180s
+
+kubectl get pods -l app=ran-automation -o wide
+
+kubectl get deployment ran-automation -o jsonpath="{.spec.template.spec.containers[0].image}{'\n'}"
+
+Ocekavani:
+- rollout success
+- Pod 1/1 Running
+- RESTARTS 0
+- image ran-automation-resilience-lab:v2.6.0-r1
+
+Kubernetes liveness zustava TCP :8000.
+Readiness zustava HTTP GET /cells.
+AI provider NENI health-probe dependency.
+
+
+PHASE 13 - PORT-FORWARD
+=======================
+
+V samostatnem okne:
+
+kubectl port-forward service/ran-automation-service 18098:8000
+
+Nech toto okno bezet.
+
+Dashboard:
+http://127.0.0.1:18098/
+
+
+PHASE 14 - KUBERNETES v2.6 STATUS
+=================================
+
+V druhem okne:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18098/ai-control/status',timeout=20)); print('Supervisor:',d.get('status')); print('Worker:',d.get('worker_alive')); print('Mode:',d.get('mode')); print('Interval:',d.get('interval_seconds')); print('Direct AI:',d.get('direct_ai_actuation')); print('Circuit:',d.get('circuit_state')); print('Strikes:',d.get('consecutive_bad_ai_outcomes')); print('Pending:',bool(d.get('pending_verification')))"
+
+Ocekavani:
+Supervisor: RUNNING
+Worker: True
+Mode: AI_GATED_DETERMINISTIC_ACTUATION
+Interval: 60.0
+Direct AI: DISABLED
+Circuit: CLOSED
+Strikes: 0
+
+Optimizer pri AI_CONTROL_ENABLED=true je zamerne MANUAL_ONLY jako samostatny
+background worker, protoze periodic schedule vlastni AI safety supervisor.
+Supervisor vola deterministic optimizer jednou za cycle. Tim se vyhneme dvojimu
+60s optimizer loopu.
+
+Over:
+
+python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:18098/optimization/status',timeout=20)); print('Optimizer service:',d.get('status')); print('Background enabled:',d.get('background_enabled')); print('Evaluation count:',d.get('evaluation_count'))"
+
+Ocekavani pri AI control enabled:
+Optimizer service: MANUAL_ONLY
+Background enabled: False
+
+Evaluation count bude rust pres supervisor.
+
+
+PHASE 15 - DASHBOARD ACCEPTANCE
+===============================
+
+Dashboard musi mit tri oddelene koncepty:
+
+1) NETWORK-WIDE OPTIMIZER
+- full configured-cell screening
+- candidate search / objective
+- deterministic recommendation
+
+2) AI ENGINEERING DECISION GATE
+- optimizer decision
+- AI control decision APPROVE / HOLD / ABSTAIN
+- engineering interpretation
+- likely cause
+- risk / confidence
+- verification
+- alternative hypothesis
+- direct AI actuation DIRECT_DISABLED
+
+3) AI CONTROL SAFETY SUPERVISOR
+- interval
+- circuit state
+- strikes x / 5
+- pending verification
+- last control result
+- direct AI actuation DISABLED
+
+
+PHASE 16 - FINAL GIT CHECK
+==========================
+
+git status --short
+
+git diff --check
+
+git diff --stat
+
+Pokud vse PASS a runtime je stabilni:
+
+git add README.md app\ai_advisor.py app\ai_control_loop.py app\main.py app\optimization_evaluator.py app\ran_controller.py k8s\deployment.yaml test_ai_advisor.py test_ai_control_loop.py test_optimization_evaluator.py INSTALL_v2.6_CZ.txt
+
+git commit -m "feat: add AI-gated guarded control loop with safety circuit breaker"
+
+git push origin main
+
+
+INTERVIEW-SAFE ARCHITECTURE SENTENCE
+====================================
+
+"The deterministic optimizer still owns the physics, candidate generation,
+hard guardrails and target value. The AI is a bounded decision gate that can
+only approve, hold or abstain on that exact candidate. A separate supervisor
+performs guarded apply, verifies the next observation window, restores the
+previous verified-healthy checkpoint on failure, and opens a circuit breaker
+after five consecutive bad AI-approved outcomes. Direct model-to-RAN
+actuation is disabled."
+
+
+CO JE DULEZITE NECLAIMOVAT
+==========================
+
+- Neni to production T-Mobile RAN.
+- Neni to production Kubernetes/RAN experience.
+- AI nema prime vendor/O-RAN radio credentials.
+- LLM neprepocitava RF fyziku a neurcuje libovolne TX/tilt hodnoty.
+- 60 s neni univerzalni produkcni RAN control-loop SLA; je to learning-lab
+  observation period. Produkcni interval by se ridil use-casem, telemetry
+  freshness, settling time, interface latency a operational policy.
+- Circuit-breaker state je v tomto labu in-memory. Production by vyzadovala
+  persistence, audit, idempotency, leader election/coordination a HA state.

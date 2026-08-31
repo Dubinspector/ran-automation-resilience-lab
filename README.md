@@ -27,16 +27,16 @@ The lab demonstrates how platform health, RAN-domain validation and automated re
 Current application release candidate:
 
 ```text
-APP-v2.4.0
+APP-v2.6.0
 ```
 
-Current immutable Kubernetes image candidate for the v2.4 optimizer update:
+Current immutable Kubernetes image candidate for the v2.6 AI-gated control update:
 
 ```text
-ran-automation-resilience-lab:v2.4.0
+ran-automation-resilience-lab:v2.6.0-r1
 ```
 
-Version v2.4.0 extends the validated v2.3.1 periodic evaluator into a bounded network-wide read-only optimizer. It screens the complete configured-cell inventory, evaluates a limited set of concrete RF / steering alternatives through the existing physics-inspired RF + UE + traffic model under one frozen context, rejects unsafe candidates with the existing guardrails, and recommends only a candidate with a meaningful positive network-wide objective gain. Automatic actuation remains disabled.
+Version v2.6.0 keeps the v2.4 deterministic network-wide optimizer authoritative, evolves the v2.5 AI advisor into a bounded APPROVE / HOLD / ABSTAIN decision gate, and adds a single-process safety supervisor. The supervisor can submit only the exact deterministic TX-power or electrical-tilt candidate through the existing guarded-apply path. Every applied change remains pending until the next observation cycle verifies a healthy RAN. An unhealthy post-change state forces rollback to the previous verified-healthy checkpoint. Five consecutive bad AI-approved actuation outcomes open a circuit breaker and disable further AI-gated actuation until a healthy manual reset. Direct model-to-RAN actuation remains impossible.
 
 The previously validated v2.2.2/v2.3.1 baseline demonstrated:
 
@@ -682,6 +682,192 @@ kubectl get endpointslice
 kubectl rollout status
 ```
 
+
+---
+
+## AI Engineering Decision Gate + Safety Supervisor (v2.6)
+
+v2.6 deliberately does **not** turn the LLM into an unconstrained RAN controller.
+The deterministic network model still owns physics, full-cell screening, candidate generation, hard guardrails and network-wide objective ranking.
+The AI gets one bounded candidate and may return only `APPROVE`, `HOLD` or `ABSTAIN` plus the engineering assessment.
+
+```text
+synthetic RAN / weather / UE / traffic
+                |
+                v
+physics-inspired RAN engine
+                |
+                v
+network-wide deterministic optimizer
+(all configured cells screened; bounded candidate search)
+                |
+                v
+hard guardrails + transparent objective
+                |
+                v
+BEST SAFE CANDIDATE
+                |
+                v
+AI bounded decision gate
+APPROVE / HOLD / ABSTAIN
+                |
+        APPROVE only
+                v
+deterministic safety supervisor
+                |
+                v
+guarded_apply(EXACT optimizer value)
+        |                   |
+        | PASS              | FAIL
+        v                   v
+pending verification     rollback/reject
+        |
+        v
+next observation cycle
+        |                   |
+        | HEALTHY           | UNHEALTHY
+        v                   v
+promote safety          FORCE RESTORE
+checkpoint              previous verified-healthy checkpoint
+                            |
+                            v
+                   bad-AI outcome strike
+                            |
+                     5 consecutive strikes
+                            v
+                   CIRCUIT BREAKER OPEN
+                   AI-gated actuation disabled
+```
+
+### What AI receives
+
+The provider input remains bounded and inspectable:
+
+```text
+current_state
+candidate_result
+network_effect
+top_affected_cells
+guardrails
+alarms
+weather
+traffic
+```
+
+`candidate_result` is produced by deterministic code. The model cannot return a replacement target cell, parameter or target value because these fields are not part of its output schema. The supervisor copies the exact optimizer result into the guarded apply request.
+
+### What AI returns
+
+```text
+control_decision: APPROVE | HOLD | ABSTAIN
+engineering_interpretation
+likely_cause
+decision_reason
+risk_level
+confidence
+rationale
+recommended_verification
+alternative_hypothesis
+evidence_limitations
+```
+
+### Deterministic policy gate after AI
+
+Even `APPROVE` is not sufficient on its own. The supervisor independently requires:
+
+- current optimizer `ran_state == HEALTHY`,
+- `optimization_state == OPPORTUNITY_FOUND`,
+- deterministic candidate guardrail verdict `PASS`,
+- positive objective gain,
+- complete target/value data,
+- auto-actuator allowlist match,
+- no `HIGH` AI risk,
+- no `LOW` AI confidence,
+- no active `CRITICAL` alarm.
+
+For v2.6, automatic actuation is intentionally restricted to bounded RF configuration changes:
+
+```text
+tx_power_dbm
+electrical_tilt_deg
+```
+
+`TRAFFIC_STEERING` remains outside the automatic AI path because it belongs to the separate capacity-recovery/policy actuator path already present in the lab. This preserves the rule that different failure classes use different actuators.
+
+### Post-change verification and rollback
+
+Before an AI-approved change, the supervisor stores the currently verified-healthy controller configuration as a safety checkpoint. `guarded_apply()` still performs its normal precheck and candidate guardrails. If the change applies, an immediate health check must pass and the change enters `PENDING_VERIFICATION`.
+
+At the next control cycle, a fresh health observation is the acceptance window:
+
+- `PASS` -> the applied configuration becomes the new verified-healthy safety checkpoint and the bad-outcome counter resets to zero.
+- `FAIL` -> the supervisor calls the separately authorized safety-checkpoint restore path and verifies the rollback result.
+- rollback does not restore health -> circuit opens immediately because the issue may no longer be attributable to the AI configuration change.
+
+### Five-strike circuit breaker
+
+A strike means an **AI-approved state-changing attempt produced a bad actuation outcome**. It is not simply an AI API error.
+
+Counts as a strike:
+
+- exact AI-approved candidate is rejected/rolled back by guarded apply,
+- immediate post-apply health check fails,
+- next-cycle post-change verification becomes unhealthy or errors.
+
+Does **not** count as a strike because no actuation occurs:
+
+- provider timeout/unavailability,
+- malformed AI output,
+- `HOLD`,
+- `ABSTAIN`,
+- deterministic pre-gate blocks the candidate,
+- baseline becomes unsafe before apply.
+
+After 5 consecutive bad AI-approved outcomes, the circuit state becomes `OPEN`. Optimizer evaluation remains available read-only, but AI-gated actuation stops. Reset is explicit and accepted only while the current RAN baseline is healthy.
+
+### 60-second cadence
+
+Default:
+
+```text
+AI_CONTROL_INTERVAL_SECONDS=60
+AI_CONTROL_BAD_DECISION_THRESHOLD=5
+```
+
+The supervisor is single-threaded and does not overlap control cycles. It uses a fixed start-to-start cadence when the complete optimizer + AI + verification cycle finishes inside the configured period. `duration_seconds` and `interval_overrun` are exposed in status. If a cycle takes longer than 60 seconds, increase the interval rather than running concurrent decisions.
+
+The deterministic optimizer still screens the complete configured-cell inventory; the AI does not need raw per-UE or raw all-cell telemetry to redo RF mathematics. It receives the optimizer's bounded engineering evidence, network effect and top affected cells. This keeps the LLM out of the physics authority boundary.
+
+### Failure behavior
+
+The AI provider is optional for observation but **fail-closed for actuation**:
+
+- missing `OPENAI_API_KEY` -> no AI-gated change,
+- provider timeout/HTTP error -> no AI-gated change,
+- malformed structured output -> no AI-gated change,
+- deterministic optimizer remains available,
+- Kubernetes liveness/readiness never depend on the AI provider.
+
+Direct AI actuation is always disabled. The model only returns a decision token. State-changing calls are made by deterministic application code and still pass through the existing guarded controller.
+
+New v2.6 endpoints:
+
+```text
+GET  /ai-control/status
+POST /ai-control/run-once
+POST /ai-control/reset-circuit-breaker
+```
+
+Existing AI inspection endpoints remain:
+
+```text
+GET  /ai-advisor/status
+GET  /ai-advisor/input-preview
+POST /ai-advisor/analyze-latest
+```
+
+`/ai-advisor/analyze-latest` returns a decision and assessment but does not actuate anything by itself.
+
 ---
 
 ## Testing Strategy
@@ -735,6 +921,7 @@ ran-automation-resilience-lab/
 |   ├── dashboard.py
 |   ├── ran_controller.py
 |   ├── optimization_evaluator.py
+|   ├── ai_advisor.py
 |   ├── ran_engine.py
 |   ├── rf_model.py
 |   ├── traffic_model.py
@@ -774,6 +961,8 @@ The project is designed to practice the kind of thinking required when operating
 - scan the full configured-cell inventory and bound the candidate search
 - rank safe candidates by transparent network-wide RF / service / capacity evidence
 - produce concrete cell-level recommendations with predicted network impact
+- keep AI advisory separate from deterministic RF physics and guardrails
+- degrade gracefully when the external AI provider is unavailable
 - verify recovery rather than assuming success
 
 ---
@@ -782,7 +971,7 @@ The project is designed to practice the kind of thinking required when operating
 
 A concise description of the project is:
 
-> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. I also added a periodic network-wide read-only optimizer that screens all configured cells, re-simulates bounded RF and traffic-steering alternatives under one frozen context, rejects unsafe candidates with guardrails and returns a concrete cell-level recommendation only when the predicted network-wide outcome improves. Automatic actuation remains intentionally disabled. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
+> I built my own Kubernetes learning lab around a simulated RAN automation delivery and resilience workflow. I containerized the application, deployed it on Kubernetes, introduced controlled infrastructure, integration, RF and capacity failures, performed root-cause analysis, and practiced rollout, rollback and self-healing procedures. I added a network-wide deterministic optimizer that screens all configured cells, evaluates bounded candidates under one frozen context and rejects unsafe candidates with hard guardrails. In v2.6 I added a bounded AI decision gate: the model can only approve, hold or abstain on the exact deterministic candidate. A separate safety supervisor owns guarded apply, next-window health verification, forced rollback to the previous verified-healthy checkpoint and a five-strike circuit breaker. Direct AI-to-RAN actuation is not allowed. The RAN environment is synthetic and uses a physics-inspired RF model. This is hands-on learning-lab experience, not production Kubernetes or production RAN experience.
 
 ---
 
@@ -799,3 +988,8 @@ v2.2.2 full local regression suite: PASS
 ```
 
 For v2.4.0, run `test_optimization_evaluator.py` plus the existing self-healing and capacity regression tests. Then run a container startup/API smoke test, deploy the immutable `v2.4.0` image, verify `/optimization/status`, and confirm the safe-but-suboptimal 45 dBm scenario before committing the update.
+
+
+The v2.5 lineage used `test_ai_advisor.py` for a read-only, on-demand advisor. In v2.6 the same test validates the bounded structured decision schema while `test_ai_control_loop.py` validates the new state-changing supervisor path with a mocked provider. The AI provider is never part of Kubernetes liveness/readiness.
+
+For v2.6.0, run both tests plus the unchanged v2.4 optimizer and existing self-healing/capacity regressions. Validate the 60-second supervisor status, exact candidate mapping, pending verification, forced checkpoint rollback, five-strike circuit breaker, healthy-only reset and provider fail-closed actuation behavior before rollout.
